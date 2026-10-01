@@ -1,0 +1,58 @@
+{
+ "atlas": "navatlas",
+ "date": "2026-10-01",
+ "files": {
+  "labels.jsonl.gz": {
+   "from": "labels/labels.jsonl",
+   "lines": 12752
+  },
+  "s2.jsonl.gz": {
+   "from": "meta/s2.jsonl",
+   "lines": 3276
+  },
+  "crossref_bib.jsonl.gz": {
+   "from": "meta/crossref_bib.jsonl",
+   "lines": 1359
+  },
+  "cite_keys.json.gz": {
+   "from": "meta/cite_keys.json",
+   "lines": 3155
+  },
+  "comparable.json.gz": {
+   "from": "meta/comparable.json",
+   "lines": 1
+  },
+  "audit.json.gz": {
+   "from": "meta/audit.json",
+   "lines": 2338
+  },
+  "variants.json.gz": {
+   "from": "meta/variants.json",
+   "lines": 758
+  },
+  "affil.json.gz": {
+   "from": "meta/affil.json",
+   "lines": 13579
+  },
+  "protocols.json.gz": {
+   "from": "meta/protocols.json",
+   "lines": 914
+  },
+  "fulltext_links.json.gz": {
+   "from": "meta/fulltext_links.json",
+   "lines": 4610
+  },
+  "raw-arxiv.jsonl.gz": {
+   "from": "raw/arxiv.jsonl",
+   "lines": 9808
+  },
+  "raw-openalex.jsonl.gz": {
+   "from": "raw/openalex.jsonl",
+   "lines": 13973
+  },
+  "reading.tar.gz": {
+   "from": "reading/",
+   "files": 2702
+  }
+ }
+}

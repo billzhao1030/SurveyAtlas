@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SurveyAtlas · Living literature surveys</title>
+<meta name="description" content="SurveyAtlas turns a research field's literature into a living survey: a searchable, self-updating website with a faceted library, Q&A with citations, a research map, a timeline and verified benchmark leaderboards. Open source (MIT).">
+<meta property="og:title" content="SurveyAtlas · Living literature surveys">
+<meta property="og:description" content="A survey you can search, filter and ask questions, and that rebuilds itself as new papers appear. NavAtlas: 3,147 embodied-navigation papers, deep-read and verified.">
+<meta property="og:image" content="assets/poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23232a5c'/%3E%3Cpath d='M8 23 L14 9 L18 17 L24 11' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='24' cy='11' r='2.6' fill='%23eda100'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,600;1,6..72,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f6f2; --bg2:#efede6; --surface:#ffffff; --surface2:#f3f2ee; --line:rgba(20,22,48,.10); --line2:rgba(20,22,48,.18);
+  --ink:#151831; --ink2:#3e4364; --muted:#6c7192; --accent:#3b4fd8; --accent2:#7c3aed; --gold:#c27803;
+  --grad:linear-gradient(100deg,#3b4fd8 0%,#7c3aed 50%,#d97706 100%);
+  --glow:rgba(59,79,216,.12); --glow2:rgba(124,58,237,.08); --gridline:rgba(20,22,48,.045);
+  --navbg:rgba(247,246,242,.82); --glass:rgba(255,255,255,.72); --frame:#ffffff; --codebg:#ffffff; --codeink:#2a2f55;
+  --shadow:0 30px 80px -34px rgba(30,34,90,.35); --usrow:linear-gradient(90deg,rgba(59,79,216,.10),rgba(124,58,237,.05));
+  --no:#b5b8cc; --yes:#16a36b;
+  --serif:"Newsreader",Georgia,serif; --sans:"Inter",system-ui,-apple-system,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  --r:18px; --max:1180px; color-scheme:light;
+}
+:root[data-theme=dark]{
+  --bg:#080a14; --bg2:#0d1020; --surface:rgba(255,255,255,.035); --surface2:rgba(255,255,255,.06); --line:rgba(255,255,255,.09); --line2:rgba(255,255,255,.16);
+  --ink:#eceefb; --ink2:#c3c7e2; --muted:#8a90b2; --accent:#7c8cff; --accent2:#b77dff; --gold:#ffbf47;
+  --grad:linear-gradient(100deg,#9aa6ff 0%,#c79bff 45%,#ffc66b 100%);
+  --glow:rgba(124,140,255,.16); --glow2:rgba(183,125,255,.10); --gridline:rgba(255,255,255,.035);
+  --navbg:rgba(8,10,20,.72); --glass:rgba(13,16,32,.55); --frame:#0f1222; --codebg:#0d1020; --codeink:#cfd3f5;
+  --shadow:0 40px 120px -30px rgba(90,100,255,.45); --usrow:linear-gradient(90deg,rgba(95,111,255,.14),rgba(154,107,255,.06));
+  --no:#565b78; --yes:#2fd39a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden;transition:background .3s,color .3s}
+a{color:inherit}
+img,video{max-width:100%;display:block}
+code{font:.9em var(--mono)}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav{position:fixed;inset:0 0 auto 0;z-index:50;transition:background .3s,border-color .3s;border-bottom:1px solid transparent}
+.nav.solid{background:var(--navbg);backdrop-filter:blur(14px) saturate(140%);border-color:var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:18px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em;text-decoration:none;font-size:17px}
+.brand svg{width:28px;height:28px}
+.nav nav{display:flex;gap:4px;margin-left:auto}
+.nav nav a{font-size:14px;color:var(--ink2);text-decoration:none;padding:7px 12px;border-radius:9px;transition:background .2s,color .2s}
+.nav nav a:hover{background:var(--surface2);color:var(--ink)}
+.gh,.tbtn{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;text-decoration:none;padding:7px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--glass);color:var(--ink);cursor:pointer}
+.gh:hover,.tbtn:hover{border-color:var(--accent)}
+.gh svg{width:16px;height:16px;fill:currentColor}
+.gh .cnt{padding-left:8px;border-left:1px solid var(--line2);color:var(--muted);font-variant-numeric:tabular-nums}
+.tbtn{padding:7px 9px}.tbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;overflow:hidden;
+  background:radial-gradient(1200px 700px at 78% 30%,var(--glow),transparent 60%),radial-gradient(900px 600px at 10% 90%,var(--glow2),transparent 60%),var(--bg)}
+.hero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--gridline) 1px,transparent 1px),linear-gradient(90deg,var(--gridline) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at 60% 40%,#000 30%,transparent 75%)}
+#field{position:absolute;inset:0;width:100%;height:100%}
+.hero .wrap{position:relative;z-index:2;width:100%;pointer-events:none}
+.hero .copy{max-width:600px;pointer-events:auto;padding:110px 0 120px}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);padding:6px 12px 6px 6px;border-radius:999px;border:1px solid var(--line2);background:var(--glass);backdrop-filter:blur(8px)}
+.eyebrow b{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:linear-gradient(90deg,#4f5ff0,#8b5cf6);color:#fff}
+h1{font:600 clamp(44px,6.4vw,84px)/1.02 var(--serif);letter-spacing:-.02em;margin:22px 0 20px}
+.lead{font-size:clamp(17px,1.6vw,20px);color:var(--ink2);max-width:560px;margin:0 0 30px}
+.cta{display:flex;flex-wrap:wrap;gap:12px}
+.btn{display:inline-flex;align-items:center;gap:9px;font:600 15px var(--sans);padding:13px 20px;border-radius:12px;text-decoration:none;border:1px solid var(--line2);background:var(--glass);backdrop-filter:blur(8px);color:var(--ink);transition:transform .15s,border-color .2s,box-shadow .2s;cursor:pointer}
+.btn:hover{transform:translateY(-1px);border-color:var(--accent)}
+.btn.pri{background:linear-gradient(100deg,#4f5ff0,#8b5cf6);border-color:transparent;color:#fff;box-shadow:0 10px 30px -8px rgba(100,90,240,.55)}
+.btn.pri:hover{box-shadow:0 14px 38px -8px rgba(100,90,240,.75)}
+.btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.counters{display:grid;grid-template-columns:repeat(4,auto);gap:28px;margin-top:46px;max-width:640px}
+.counter b{display:block;font:600 34px/1.1 var(--serif);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.counter span{font-size:12.5px;color:var(--muted)}
+.hero-year{position:absolute;right:40px;top:74px;z-index:2;font:600 40px/1 var(--serif);color:var(--line2);font-variant-numeric:tabular-nums;pointer-events:none}
+.ftip{position:fixed;z-index:60;pointer-events:none;background:var(--surface);color:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:8px 11px;font-size:12.5px;max-width:320px;opacity:0;transition:opacity .12s;box-shadow:var(--shadow)}
+.ftip b{display:block;font-size:13.5px}
+.scroll-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:2;width:22px;height:36px;border:2px solid var(--line2);border-radius:12px}
+.scroll-hint::after{content:"";position:absolute;left:50%;top:7px;width:4px;height:7px;margin-left:-2px;border-radius:2px;background:var(--ink2);animation:sh 1.8s infinite}
+@keyframes sh{0%{opacity:0;transform:translateY(0)}30%{opacity:1}80%{opacity:0;transform:translateY(11px)}100%{opacity:0}}
+.marquee{border-block:1px solid var(--line);background:var(--bg2);overflow:hidden;white-space:nowrap;padding:16px 0;font-size:14px;color:var(--muted)}
+.marquee .track{display:inline-flex;gap:46px;animation:mq 38s linear infinite;padding-left:46px}
+.marquee span{display:inline-flex;align-items:center;gap:10px}
+.marquee span::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent)}
+@keyframes mq{to{transform:translateX(-50%)}}
+section.sec{padding:120px 0}
+.tint{background:linear-gradient(180deg,transparent,var(--glow2),transparent)}
+.kicker{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+h2{font:600 clamp(34px,4vw,52px)/1.08 var(--serif);letter-spacing:-.015em;margin:0 0 16px}
+.sub{color:var(--ink2);font-size:18px;max-width:720px;margin:0}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+.frame{margin-top:46px;border-radius:16px;border:1px solid var(--line2);background:var(--frame);box-shadow:var(--shadow);overflow:hidden;position:relative}
+.frame::before{content:"";position:absolute;inset:-1px;border-radius:16px;padding:1px;background:linear-gradient(120deg,rgba(79,95,240,.55),rgba(139,92,246,.2),rgba(217,119,6,.45));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.bar{display:flex;align-items:center;gap:8px;height:42px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--surface2)}
+.bar i{width:11px;height:11px;border-radius:50%;background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
+.url{margin:0 auto;font:12.5px var(--mono);color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:4px 16px;border-radius:8px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frame video{width:100%;aspect-ratio:16/10;background:var(--frame)}
+.vctl{position:absolute;left:16px;bottom:16px;z-index:3;display:flex;gap:8px}
+.vctl button{font:600 12.5px var(--sans);border:1px solid var(--line2);background:var(--glass);backdrop-filter:blur(8px);color:var(--ink);border-radius:9px;padding:6px 10px;cursor:pointer}
+.chapters{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chapters button{font:500 13px var(--sans);color:var(--ink2);background:var(--surface);border:1px solid var(--line);padding:7px 13px;border-radius:999px;cursor:pointer;transition:all .2s;display:inline-flex;gap:8px;align-items:center}
+.chapters button small{color:var(--muted);font-variant-numeric:tabular-nums}
+.chapters button:hover{border-color:var(--line2);color:var(--ink)}
+.chapters button.on{background:linear-gradient(90deg,rgba(79,95,240,.16),rgba(139,92,246,.14));border-color:rgba(79,95,240,.55);color:var(--ink)}
+.progress{height:3px;background:var(--line);border-radius:3px;margin-top:14px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--gold))}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:50px}
+.card{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:28px 30px}
+.card h3{font:600 23px/1.2 var(--serif);margin:0 0 6px}
+.card .tag{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.card ul{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.card li{display:flex;gap:12px;color:var(--ink2);font-size:15px}
+.card li svg{flex:none;width:19px;height:19px;margin-top:3px}
+.card.old li svg{stroke:var(--muted)}.card.old{background:var(--surface2)}
+.card.new{position:relative;background:linear-gradient(160deg,rgba(79,95,240,.08),rgba(139,92,246,.04) 50%,rgba(217,119,6,.04)),var(--surface)}
+.card.new::before{content:"";position:absolute;inset:-1px;border-radius:var(--r);padding:1px;background:linear-gradient(130deg,rgba(79,95,240,.7),rgba(139,92,246,.3),rgba(217,119,6,.55));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.card.new li svg{stroke:var(--yes)}
+.show{display:grid;grid-template-columns:320px 1fr;gap:34px;margin-top:50px;align-items:center}
+.tabs{display:grid;gap:8px}
+.tab{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:16px 18px;color:var(--ink2);cursor:pointer;font:inherit;position:relative;overflow:hidden;transition:border-color .2s,background .2s}
+.tab b{display:block;color:var(--ink);font-size:16px}
+.tab span{font-size:13.5px;line-height:1.5;display:block;max-height:0;opacity:0;overflow:hidden;transition:max-height .45s,opacity .45s,margin .45s}
+.tab.on span{max-height:120px;opacity:1;margin-top:4px}
+.tab.on{border-color:rgba(79,95,240,.5);background:linear-gradient(120deg,rgba(79,95,240,.08),rgba(139,92,246,.04)),var(--surface)}
+.tab .tm{position:absolute;left:0;bottom:0;height:2px;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.tab.on .tm{animation:tm 6s linear forwards}
+.paused .tab.on .tm{animation:none;width:100%}
+@keyframes tm{to{width:100%}}
+.shots{position:relative;border-radius:16px;border:1px solid var(--line2);overflow:hidden;background:#fff;aspect-ratio:1440/980;box-shadow:var(--shadow)}
+.shots img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;opacity:0;transform:scale(1.015);transition:opacity .6s,transform 1.2s}
+.shots img.on{opacity:1;transform:none}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px}
+.mini{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:22px;transition:transform .25s,border-color .25s,box-shadow .25s}
+.mini:hover{transform:translateY(-3px);border-color:var(--line2);box-shadow:var(--shadow)}
+.mini .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(79,95,240,.16),rgba(139,92,246,.12));margin-bottom:14px}
+.mini .ic svg{width:19px;height:19px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mini h4{margin:0 0 6px;font-size:16px}
+.mini p{margin:0;font-size:14px;color:var(--ink2)}
+.mini code,.steps code{font:12.5px var(--mono);color:var(--accent);background:rgba(79,95,240,.08);padding:1px 6px;border-radius:5px}
+.funnel{margin-top:54px;display:grid;gap:14px}
+.frow{display:grid;grid-template-columns:92px 220px 1fr;gap:26px;align-items:center;padding:22px 28px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r)}
+.fstep{display:flex;align-items:center;gap:10px}
+.fic{width:44px;height:44px;flex:none;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(79,95,240,.16),rgba(139,92,246,.12))}
+.fic svg{width:22px;height:22px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fno{font:600 14px var(--mono);color:var(--muted)}
+.fnum b{display:block;font:600 44px/1 var(--serif);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.fnum span{display:block;margin-top:6px;font-size:15px;color:var(--muted)}
+.fbody h3{margin:0 0 4px;font-size:20px;font-weight:650}
+.fbody p{margin:0;font-size:16.5px;line-height:1.55;color:var(--ink2)}
+.fbar{margin-top:14px;height:10px;border-radius:6px;background:var(--line)}
+.fbar i{display:block;height:100%;width:var(--w);border-radius:6px;background:linear-gradient(90deg,#4f5ff0,#8b5cf6 60%,#d97706);transform:scaleX(0);transform-origin:left;transition:transform 1.2s cubic-bezier(.2,.7,.2,1) .2s}
+.frow.in .fbar i{transform:scaleX(1)}
+.outcomes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.ocard{display:grid;grid-template-columns:44px 1fr;gap:20px;padding:26px 28px;border-radius:var(--r);border:1px solid rgba(79,95,240,.35);background:linear-gradient(150deg,rgba(79,95,240,.08),rgba(139,92,246,.04)),var(--surface)}
+.ocard > div > b{display:block;font:600 44px/1 var(--serif);font-variant-numeric:tabular-nums}
+.ocard h3{margin:6px 0 8px;font-size:20px;font-weight:650}
+.ocard p{margin:0;font-size:16.5px;line-height:1.55;color:var(--ink2)}
+.ocard .pct{font-weight:700;color:var(--accent)}
+.stats{display:grid;grid-template-columns:1.5fr 1fr;gap:22px;margin-top:50px}
+.chart{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:24px 24px 16px}
+.chart h4{margin:0 0 2px;font-size:16px}
+.chart .muted{color:var(--muted);font-size:13px}
+#yearsChart,#benchChart{width:100%;margin-top:14px}
+.bench-row{display:grid;grid-template-columns:110px 1fr 44px;align-items:center;gap:10px;font-size:13px;margin:7px 0;color:var(--ink2)}
+.bench-row .b{height:9px;border-radius:5px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform-origin:left;transform:scaleX(0);transition:transform 1s cubic-bezier(.2,.7,.2,1)}
+.in .bench-row .b{transform:scaleX(1)}
+.bench-row span:last-child{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.big4{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:22px}
+.big4 .card{padding:22px}
+.big4 b{display:block;font:600 36px/1.1 var(--serif);font-variant-numeric:tabular-nums}
+.big4 span{font-size:13px;color:var(--muted)}
+.build{display:grid;grid-template-columns:1fr 1.15fr;gap:46px;align-items:center;margin-top:46px}
+.steps{display:grid;gap:18px;counter-reset:s}
+.steps div{display:grid;grid-template-columns:40px 1fr;gap:14px;color:var(--ink2);font-size:15px}
+.steps div::before{counter-increment:s;content:counter(s);width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:700;color:#fff;background:linear-gradient(135deg,#4f5ff0,#8b5cf6)}
+.steps b{color:var(--ink);display:block}
+.term{border-radius:16px;border:1px solid #23284a;background:#0b0d18;box-shadow:var(--shadow);overflow:hidden}
+.term .bar{background:#11142a;border-color:#23284a}.term .url{background:#0b0d18;border-color:#23284a;color:#7d84a8}
+.term pre{margin:0;padding:20px 22px 24px;font:13.5px/1.75 var(--mono);color:#cfd3f5;min-height:330px;white-space:pre-wrap}
+.term .p{color:#2fd39a}.term .c{color:#6f7699}.term .o{color:#9aa6ff}
+.caret{display:inline-block;width:8px;height:16px;background:#cfd3f5;vertical-align:-3px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.say{margin-top:22px;border:1px dashed var(--line2);border-radius:14px;padding:16px 18px;font-size:15px;color:var(--ink2)}
+.say q{color:var(--ink);font-style:italic}
+.tbl{margin-top:44px;border:1px solid var(--line);border-radius:var(--r);overflow:auto;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}
+th,td{padding:14px 16px;border-bottom:1px solid var(--line);text-align:center}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td:first-child,th:first-child{text-align:left}
+tr.us td{background:var(--usrow);font-weight:600}
+td .y{color:var(--yes);font-weight:700}td .n{color:var(--no)}
+.cite{margin-top:30px;position:relative}
+.cite pre{margin:0;border:1px solid var(--line);background:var(--codebg);border-radius:14px;padding:22px;font:13.5px/1.7 var(--mono);color:var(--codeink);overflow:auto}
+.copybtn{position:absolute;right:12px;top:12px;font:600 12.5px var(--sans);color:var(--ink);background:var(--surface2);border:1px solid var(--line2);border-radius:8px;padding:6px 11px;cursor:pointer}
+footer{border-top:1px solid var(--line);padding:46px 0 60px;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center}
+footer a{color:var(--ink2)}
+@media (max-width:980px){
+  .nav nav{display:none}.counters{grid-template-columns:repeat(2,auto)}
+  .vs,.show,.stats,.build,.outcomes{grid-template-columns:1fr}.grid3{grid-template-columns:1fr 1fr}.big4{grid-template-columns:1fr 1fr}
+  .frow{grid-template-columns:64px 1fr;gap:16px}.frow .fbody{grid-column:1/-1}.fno{display:none}
+  .tabs{grid-template-columns:1fr 1fr}.hero-year{display:none}
+}
+@media (max-width:620px){.grid3{grid-template-columns:1fr}.tabs{grid-template-columns:1fr}section.sec{padding:84px 0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
+</style>
+<script>try{if(localStorage.getItem('sa-theme')==='dark')document.documentElement.dataset.theme='dark'}catch(e){}</script>
+</head>
+<body>
+
+<header class="nav" id="nav"><div class="wrap">
+  <a class="brand" href="#top"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#232a5c"/><path d="M8 23 L14 9 L18 17 L24 11" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="11" r="2.6" fill="#eda100"/></svg>SurveyAtlas</a>
+  <nav><a href="#demo">Demo</a><a href="#why">Why</a><a href="#features">Features</a><a href="#pipeline">How it works</a><a href="#build">Build your own</a><a href="#cite">Cite</a></nav>
+  <button class="tbtn" id="themeT" aria-label="Toggle light / dark"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
+  <a class="gh" href="https://github.com/billzhao1030/SurveyAtlas"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>Star<span class="cnt" id="stars">★</span></a>
+</div></header>
+
+<main id="top">
+<section class="hero">
+  <canvas id="field" aria-label="Every paper in NavAtlas, placed by date and paradigm"></canvas>
+  <div class="wrap"><div class="copy">
+    <span class="eyebrow"><b>Open source</b>MIT · Python · Claude Code</span>
+    <h1>Literature surveys<br>that <span class="grad">stay alive.</span></h1>
+    <p class="lead">SurveyAtlas turns a research field into a website you can search, slice and question. LLM agents harvest, classify and deep-read every paper, verify every reported number, and rebuild the survey as new work appears.</p>
+    <div class="cta">
+      <a class="btn pri" href="navatlas/"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Open the live NavAtlas</a>
+      <a class="btn" href="#demo"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Watch the demo</a>
+      <a class="btn" href="https://github.com/billzhao1030/SurveyAtlas"><svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>Code</a>
+    </div>
+    <div class="counters" id="counters">
+      <div class="counter"><b data-k="papers">3,147</b><span>papers in NavAtlas</span></div>
+      <div class="counter"><b data-k="read">2,694</b><span>deep-read from full text</span></div>
+      <div class="counter"><b data-k="results">9,806</b><span>benchmark results</span></div>
+      <div class="counter"><b data-k="verified" data-pct="1">97.6%</b><span>found verbatim in papers</span></div>
+    </div>
+  </div></div>
+  <div class="hero-year" id="heroYear"></div>
+  <div class="scroll-hint" aria-hidden="true"></div>
+</section>
+
+<div class="marquee" aria-hidden="true"><div class="track" id="mq"></div></div>
+
+<section class="sec" id="demo"><div class="wrap">
+  <p class="kicker reveal">Demo</p>
+  <h2 class="reveal">SurveyAtlas in seventy seconds</h2>
+  <p class="sub reveal">What it is, how an atlas is built, the two-command quick start, and a tour of every page of the public NavAtlas: library, year range, authors, paper pages, Ask, map, timeline, leaderboards, surveys and pipeline.</p>
+  <div class="frame reveal">
+    <div class="bar"><i></i><i></i><i></i><div class="url">billzhao1030.github.io/SurveyAtlas/navatlas</div></div>
+    <video id="vid" muted autoplay playsinline loop preload="auto" poster="assets/poster.jpg">
+      <source src="assets/demo.webm" type="video/webm"><source src="assets/demo.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div class="progress"><i id="vprog"></i></div>
+  <div class="chapters" id="chapters"></div>
+</div></section>
+
+<section class="sec tint" id="why"><div class="wrap">
+  <p class="kicker reveal">Why</p>
+  <h2 class="reveal">A survey paper freezes the day it is submitted</h2>
+  <p class="sub reveal">Anyone can ask an LLM to summarize a stack of papers. What stays valuable is a checked, structured view of a field: what belongs to it, which routes exist, which numbers can be compared and where the gaps are. SurveyAtlas keeps that view current.</p>
+  <div class="vs">
+    <div class="card old reveal"><span class="tag">The usual way</span><h3>A survey paper</h3><ul>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>Out of date after a few months in a field that publishes daily</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>One fixed taxonomy and one reading order</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>Results tables copied by hand, protocols silently mixed</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>Cannot answer the question you actually have</li>
+    </ul></div>
+    <div class="card new reveal"><span class="tag">SurveyAtlas</span><h3>A living survey website</h3><ul>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M5 12l5 5L20 7"/></svg>New papers harvested, classified and read on a schedule</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M5 12l5 5L20 7"/></svg>Slice by task, paradigm, year, author, venue, benchmark and more</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M5 12l5 5L20 7"/></svg>Every number checked against the paper; subsets never ranked with full splits</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2"><path d="M5 12l5 5L20 7"/></svg>Ask in plain language; answers cite the papers</li>
+    </ul></div>
+  </div>
+</div></section>
+
+<section class="sec" id="features"><div class="wrap">
+  <p class="kicker reveal">Features</p>
+  <h2 class="reveal">Everything a survey gives you, and what it cannot</h2>
+  <div class="show reveal" id="show">
+    <div class="tabs" id="tabs"></div>
+    <div class="shots" id="shots"></div>
+  </div>
+  <div class="grid3">
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg></div><h4>Survey drafting</h4><p>Live outlines whose sections are queries; <code>./atlas survey</code> writes evidence packs, LaTeX tables and figures, and a PDF draft.</p></div>
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></div><h4>Export anything</h4><p>BibTeX, CSV or <code>\cite{}</code> for any selection; official BibTeX from DBLP and CrossRef where it exists.</p></div>
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></div><h4>Updates itself</h4><p><code>./atlas cron install --daily --publish</code> harvests, classifies, reads and redeploys the public site every day.</p></div>
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6"/></svg></div><h4>One file per field</h4><p>Queries, taxonomy, classifier rules, benchmark protocols and landmarks live in a single <code>atlas.py</code>.</p></div>
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2l3 6 6 .9-4.5 4.3 1 6.3L12 16.6 6.5 19.5l1-6.3L3 8.9 9 8z"/></svg></div><h4>Built with Claude Code</h4><p>No API key: classification, deep reading and Ask run on your Claude Code login. A bundled skill builds new atlases.</p></div>
+    <div class="mini reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 10h16"/></svg></div><h4>Tiny footprint</h4><p>Python standard library plus <code>requests</code>; a vanilla-JS site with no build step; static export for GitHub Pages.</p></div>
+  </div>
+</div></section>
+
+<section class="sec tint" id="pipeline"><div class="wrap">
+  <p class="kicker reveal">How it works</p>
+  <h2 class="reveal">From twenty thousand records to a verified survey</h2>
+  <p class="sub reveal">Recall first, precision from the classifier, trust from verification. The numbers are NavAtlas's own funnel.</p>
+  <div class="funnel">
+    <div class="frow reveal">
+      <div class="fstep"><span class="fic"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></span><span class="fno">01</span></div>
+      <div class="fnum"><b data-k="harvested">20,480</b><span>records harvested</span></div>
+      <div class="fbody"><h3>Harvest</h3><p>About fifty arXiv queries plus OpenAlex, written for recall rather than precision.</p><div class="fbar"><i style="--w:100%"></i></div></div>
+    </div>
+    <div class="frow reveal">
+      <div class="fstep"><span class="fic"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7v6l-4 2v-8z"/></svg></span><span class="fno">02</span></div>
+      <div class="fnum"><b data-k="classified">10,897</b><span>after rule prefilters</span></div>
+      <div class="fbody"><h3>Merge &amp; prefilter</h3><p>Duplicates across sources and versions are merged; cheap rules drop what is obviously off-topic.</p><div class="fbar"><i style="--w:73%"></i></div></div>
+    </div>
+    <div class="frow reveal">
+      <div class="fstep"><span class="fic"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 16.5h7M16.5 13v7"/></svg></span><span class="fno">03</span></div>
+      <div class="fnum"><b data-k="papers">3,147</b><span>papers kept in scope</span></div>
+      <div class="fbody"><h3>Classify with Claude</h3><p>Headless Claude labels 40 papers per call into the field taxonomy; Opus re-judges the uncertain ones.</p><div class="fbar"><i style="--w:39%"></i></div></div>
+    </div>
+    <div class="frow reveal">
+      <div class="fstep"><span class="fic"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM4 5v16M8 7h7M8 11h7"/></svg></span><span class="fno">04</span></div>
+      <div class="fnum"><b data-k="read">2,694</b><span>papers deep-read</span></div>
+      <div class="fbody"><h3>Deep read</h3><p>Each paper's full text becomes structured notes: problem, key idea, method, insight, results, limitations.</p><div class="fbar"><i style="--w:36%"></i></div></div>
+    </div>
+  </div>
+  <div class="outcomes">
+    <div class="ocard reveal"><span class="fic"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+      <div><b data-k="results">9,806</b><h3>reported results, verified</h3><p><b class="pct" data-k="verified" data-pct="1">97.6%</b> of the numbers are found verbatim in the paper text, and an LLM judge flags protocol deviations, so subsets are never ranked with full splits.</p></div></div>
+    <div class="ocard reveal"><span class="fic"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></span>
+      <div><b>Daily</b><h3>rebuilt and published</h3><p>Leaderboards, maps and BibTeX are rebuilt on a schedule, and the static site redeploys from a 23&nbsp;MB snapshot with no API calls.</p></div></div>
+  </div>
+</div></section>
+
+<section class="sec" id="numbers"><div class="wrap">
+  <p class="kicker reveal">NavAtlas today</p>
+  <h2 class="reveal">The field, as of <span id="builtAt">the last rebuild</span></h2>
+  <p class="sub reveal">Vision-and-language navigation and embodied navigation: from task-specific policies and large-scale pretraining to fine-tuned foundation models, zero-shot pipelines and agentic navigators.</p>
+  <div class="stats">
+    <div class="chart reveal"><h4>Core papers per year, by paradigm</h4><span class="muted">Click a bar to open those papers in the live atlas.</span><svg id="yearsChart" viewBox="0 0 640 300" role="img" aria-label="Papers per year by paradigm"></svg></div>
+    <div class="chart reveal" id="benchBox"><h4>Most-used benchmarks</h4><span class="muted">Core papers that evaluate on each.</span><div id="benchChart"></div></div>
+  </div>
+  <div class="big4">
+    <div class="card reveal"><b data-k="harvested">20,480</b><span>records harvested</span></div>
+    <div class="card reveal"><b data-k="core">2,212</b><span>core papers</span></div>
+    <div class="card reveal"><b data-k="authors">10,237</b><span>authors, each searchable</span></div>
+    <div class="card reveal"><b data-k="with_venue">1,849</b><span>with a resolved venue</span></div>
+  </div>
+</div></section>
+
+<section class="sec tint" id="build"><div class="wrap">
+  <p class="kicker reveal">Build your own</p>
+  <h2 class="reveal">Your field, as a living survey, in an afternoon</h2>
+  <div class="build">
+    <div>
+      <div class="steps">
+        <div class="reveal"><span><b>Describe the field</b>Write a short brief. Claude drafts the queries, taxonomy, classifier rules and landmark papers into one <code>atlas.py</code>.</span></div>
+        <div class="reveal"><span><b>Build it</b>Harvest, classify, resolve venues and build. About two hours for ten thousand candidates; a few minutes per update after that.</span></div>
+        <div class="reveal"><span><b>Read and publish</b>Optional deep reading fills the leaderboards; <code>./atlas export</code> and the bundled workflow put it on GitHub Pages.</span></div>
+      </div>
+      <div class="say reveal">Or open Claude Code and just say <q>build a literature atlas for LLM agents</q>. The bundled skill knows the playbook.</div>
+    </div>
+    <div class="term reveal"><div class="bar"><i></i><i></i><i></i><div class="url">~/SurveyAtlas</div></div><pre id="term"></pre></div>
+  </div>
+</div></section>
+
+<section class="sec" id="compare"><div class="wrap">
+  <p class="kicker reveal">Landscape</p>
+  <h2 class="reveal">How it compares</h2>
+  <div class="tbl reveal"><table>
+    <thead><tr><th></th><th>Self-hosted &amp; open</th><th>Field taxonomy</th><th>Updates itself</th><th>Verified leaderboards</th><th>Q&amp;A with citations</th><th>Survey drafting</th></tr></thead>
+    <tbody>
+      <tr class="us"><td>SurveyAtlas</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+      <tr><td>Awesome-lists</td><td><span class="y">✓</span></td><td>by hand</td><td>by hand</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+      <tr><td>Papers with Code (closed 2025)</td><td><span class="n">—</span></td><td>partial</td><td><span class="y">✓</span></td><td>unverified</td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+      <tr><td>Connected Papers · Litmaps · ResearchRabbit</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td></tr>
+      <tr><td>Elicit · Consensus · Undermind</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="n">—</span></td></tr>
+      <tr><td>PaperQA2 · OpenScholar</td><td><span class="y">✓</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="n">—</span></td></tr>
+      <tr><td>AutoSurvey · SurveyX · STORM</td><td><span class="y">✓</span></td><td><span class="n">—</span></td><td>one shot</td><td><span class="n">—</span></td><td><span class="n">—</span></td><td><span class="y">✓</span></td></tr>
+    </tbody></table></div>
+</div></section>
+
+<section class="sec" id="cite" style="padding-top:40px"><div class="wrap">
+  <p class="kicker reveal">Cite</p>
+  <h2 class="reveal">If it helps your research</h2>
+  <div class="cite reveal"><button class="copybtn" id="copyBib">Copy</button><pre id="bib">@software{surveyatlas2026,
+  title  = {SurveyAtlas: Living Literature Surveys for Fast-Moving Research Fields},
+  author = {Zhao, Xunyi},
+  year   = {2026},
+  url    = {https://github.com/billzhao1030/SurveyAtlas}
+}</pre></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span>SurveyAtlas · MIT License · built by <a href="https://billzhao1030.github.io/">Xunyi Zhao</a></span>
+  <span><a href="navatlas/">Live NavAtlas</a> · <a href="https://github.com/billzhao1030/SurveyAtlas">GitHub</a> · <a href="https://github.com/billzhao1030/SurveyAtlas/blob/main/README.zh-CN.md">中文说明</a></span>
+</div></footer>
+<div class="ftip" id="ftip"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const PAL = { light: ['#2a78d6', '#eb6834', '#1baf7a', '#e0a000', '#e0679a', '#a3a29a', '#4a3aa7', '#e34948'],
+               dark: ['#4f9dff', '#ff7a45', '#2fd39a', '#ffbe3d', '#ff7ab0', '#8b8fa3', '#9d8cff', '#ff6b6b'] };
+  const dark = () => document.documentElement.dataset.theme === 'dark';
+  let COLORS = PAL[dark() ? 'dark' : 'light'];
+  const redraws = [];
+  $('#themeT') && $('#themeT').addEventListener('click', () => {
+    const d = !dark(); document.documentElement.dataset.theme = d ? 'dark' : 'light';
+    try { localStorage.setItem('sa-theme', d ? 'dark' : 'light'); } catch (e) {}
+    COLORS = PAL[d ? 'dark' : 'light']; redraws.forEach((f) => f());
+  });
+  const APP = 'navatlas/#/navatlas';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // nav
+  const nav = $('#nav');
+  const onScroll = () => nav.classList.toggle('solid', scrollY > 30);
+  addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  fetch('https://api.github.com/repos/billzhao1030/SurveyAtlas').then((r) => r.json()).then((d) => { if (d.stargazers_count != null) $('#stars').textContent = fmt(d.stargazers_count); }).catch(() => {});
+
+  // reveal on scroll
+  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: 0.12 });
+  $$('.reveal').forEach((el, i) => { el.style.transitionDelay = `${(i % 4) * 70}ms`; io.observe(el); });
+
+  // marquee
+  const words = ['Faceted library', 'Ask with citations', 'Year range & author profiles', 'Task × paradigm map', 'Timeline & landmarks', 'Verified leaderboards', 'Deep-reading notes', 'BibTeX · CSV · \\cite', 'LaTeX survey drafts', 'Daily updates', 'Static export to GitHub Pages', 'One file per field'];
+  $('#mq').innerHTML = [...words, ...words].map((w) => `<span>${esc(w)}</span>`).join('');
+
+  // counters
+  function countUp(el, to, pct) {
+    if (RM) { el.textContent = pct ? (to * 100).toFixed(1) + '%' : fmt(to); return; }
+    const t0 = performance.now(), d = 1600;
+    const step = (t) => { const k = Math.min(1, (t - t0) / d), e = 1 - Math.pow(1 - k, 3), v = to * e;
+      el.textContent = pct ? (v * 100).toFixed(1) + '%' : fmt(Math.round(v)); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+
+  // ── data ──
+  fetch('navatlas/a/navatlas/overview.json').then((r) => { if (!r.ok) throw 0; return r.json(); }).then(init).catch(() => init(null));
+
+  function init(O) {
+    const st = O ? O.stats : null;
+    $$('[data-k]').forEach((el) => {
+      const k = el.dataset.k, v = st && st[k] != null ? st[k] : null;
+      const run = () => countUp(el, v != null ? v : +el.textContent.replace(/[^\d.]/g, '') / (el.dataset.pct ? 100 : 1), !!el.dataset.pct);
+      const o = new IntersectionObserver((es) => { if (es[0].isIntersecting) { run(); o.disconnect(); } }); o.observe(el);
+    });
+    if (O && O.built_at) $('#builtAt').textContent = new Date(O.built_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    if (O) { field(O); yearsChart(O); benchChart(O); }
+  }
+
+  // ── hero: every paper by date (x) and paradigm (lane), appearing in time order ──
+  function field(O) {
+    const cv = $('#field'), ctx = cv.getContext('2d'), tip = $('#ftip');
+    const P = O.points, PD = O.paradigms, nL = PD.length;
+    const t0 = 2014, t1 = Math.max(...P.map((p) => p[0])) + 0.15;
+    let W, H, dpr, pts = [];
+    const rnd = (i, k) => { const x = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return x - Math.floor(x); };
+    function layout() {
+      dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
+      cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const left = W > 980 ? Math.max(W * 0.5, (W - 1180) / 2 + 640) : 20, right = W - 40, top = 128, bot = H - 70;
+      const laneH = (bot - top) / nL;
+      pts = P.map((p, i) => {
+        const tt = Math.max(t0, p[0]);
+        const x = left + ((tt - t0) / (t1 - t0)) * (right - left) + (rnd(i, 1) - 0.5) * 6;
+        const y = top + laneH * (p[1] + 0.5) + (rnd(i, 2) - 0.5) * laneH * 0.82;
+        const r = 1.3 + Math.min(5.2, Math.log10(1 + (p[2] || 0)) * 1.55);
+        return { x, y, r, c: COLORS[p[1]] || COLORS[5], t: p[0], p };
+      });
+      field.lanes = { left, right, top, bot, laneH };
+    }
+    layout(); addEventListener('resize', () => { layout(); draw(clock); }); redraws.push(() => draw(clock));
+    let clock = RM ? t1 : t0, hover = null;
+    const dur = 6500, start = performance.now();
+    function draw(now) {
+      ctx.clearRect(0, 0, W, H);
+      const { left, right, top, bot, laneH } = field.lanes;
+      // year grid
+      ctx.font = '500 11px Inter, sans-serif'; ctx.textAlign = 'center';
+      for (let y = t0; y <= Math.floor(t1); y++) {
+        const x = left + ((y - t0) / (t1 - t0)) * (right - left);
+        ctx.strokeStyle = dark() ? 'rgba(255,255,255,.05)' : 'rgba(20,22,48,.06)'; ctx.beginPath(); ctx.moveTo(x, top - 10); ctx.lineTo(x, bot + 6); ctx.stroke();
+        if (W > 700) { ctx.fillStyle = dark() ? 'rgba(255,255,255,.28)' : 'rgba(20,22,48,.38)'; ctx.fillText(y === t0 ? `≤${y}` : String(y), x, bot + 22); }
+      }
+      // sweep line
+      const sx = left + ((Math.min(now, t1) - t0) / (t1 - t0)) * (right - left);
+      if (now < t1) { const g = ctx.createLinearGradient(sx - 80, 0, sx, 0); g.addColorStop(0, 'rgba(79,95,240,0)'); g.addColorStop(1, 'rgba(79,95,240,.16)'); ctx.fillStyle = g; ctx.fillRect(sx - 80, top - 10, 80, bot - top + 16); }
+      for (const q of pts) {
+        if (q.t > now) continue;
+        const age = Math.min(1, (now - q.t) * 2.2);
+        ctx.globalAlpha = 0.25 + 0.6 * age;
+        ctx.fillStyle = COLORS[q.p[1]] || COLORS[5];
+        ctx.beginPath(); ctx.arc(q.x, q.y, q.r * (1 + (1 - age) * 1.4), 0, 6.283); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (W > 700) { ctx.textAlign = 'left'; ctx.font = '600 10.5px Inter, sans-serif';
+        PD.forEach((p, i) => { ctx.fillStyle = COLORS[i]; ctx.globalAlpha = 0.85; ctx.fillText(p.label.toUpperCase(), left, top + laneH * i + 4); }); ctx.globalAlpha = 1; }
+      if (hover) { ctx.strokeStyle = dark() ? '#fff' : '#151831'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(hover.x, hover.y, hover.r + 4, 0, 6.283); ctx.stroke(); ctx.lineWidth = 1; }
+      $('#heroYear').textContent = Math.floor(Math.min(now, t1 - 0.01));
+    }
+    function frame(ts) { clock = t0 + (t1 - t0) * Math.min(1, Math.max(0, (ts - start) / dur)) ** 0.9; draw(clock); if (clock < t1) requestAnimationFrame(frame); }
+    if (RM) draw(t1); else requestAnimationFrame(frame);
+    cv.addEventListener('mousemove', (e) => {
+      const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+      let best = null, bd = 144;
+      for (const q of pts) { if (q.t > clock) continue; const d = (q.x - mx) ** 2 + (q.y - my) ** 2; if (d < bd) { bd = d; best = q; } }
+      hover = best; draw(clock); cv.style.cursor = best ? 'pointer' : '';
+      if (best) {
+        const p = best.p, yr = Math.floor(p[0]);
+        tip.innerHTML = `<b>${esc(p[3] || 'Paper ' + p[4])}</b>${yr} · ${esc(PD[p[1]].label)}${p[2] ? ` · ${fmt(p[2])} citations` : ''}<br><span style="color:var(--muted)">click to open in NavAtlas</span>`;
+        tip.style.opacity = 1; tip.style.left = Math.min(innerWidth - 330, e.clientX + 14) + 'px'; tip.style.top = e.clientY + 14 + 'px';
+      } else tip.style.opacity = 0;
+    });
+    cv.addEventListener('mouseleave', () => { hover = null; tip.style.opacity = 0; draw(clock); });
+    cv.addEventListener('click', () => { if (hover) location.href = `${APP}/paper?${encodeURIComponent(hover.p[4])}`; });
+  }
+
+  // ── demo video + chapters ──
+  const vid = $('#vid');
+  vid.muted = true;  // autoplay policies need the property, not only the attribute
+  new IntersectionObserver((es) => { es[0].isIntersecting ? vid.play().catch(() => {}) : vid.pause(); }, { threshold: 0.2 }).observe(vid);
+  fetch('assets/chapters.json').then((r) => r.json()).then((ch) => {
+    const box = $('#chapters'), mm = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    box.innerHTML = ch.map((c, i) => `<button data-i="${i}">${esc(c.title)} <small>${mm(c.t)}</small></button>`).join('');
+    box.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; vid.currentTime = ch[+b.dataset.i].t + 0.05; vid.play().catch(() => {}); });
+    vid.addEventListener('timeupdate', () => {
+      const t = vid.currentTime; let k = 0; ch.forEach((c, i) => { if (t >= c.t) k = i; });
+      $$('button', box).forEach((b, i) => b.classList.toggle('on', i === k));
+      $('#vprog').style.width = `${(t / (vid.duration || 1)) * 100}%`;
+    });
+  }).catch(() => {});
+
+  // ── feature showcase ──
+  const FEATS = [
+    ['Library', 'Faceted search over every paper: task, paradigm, setting, year range, author profiles, venue, benchmark. Export BibTeX or CSV.', 'img/library.png', `${APP}/library`],
+    ['Ask', 'Plain-language questions answered from the atlas only, with numbered citations and the best reported results attached.', 'img/ask.png', `${APP}/ask`],
+    ['Research map', 'Task × paradigm heat map: dense cells are mature lines of work, empty cells are open questions.', 'img/map.png', `${APP}/map`],
+    ['Timeline', 'Papers per year by paradigm, per-task trends and the landmark papers of every year.', 'img/timeline.png', `${APP}/timeline`],
+    ['Leaderboards', 'Results extracted from the papers, verified against the text, split by protocol, zero-shot vs trained and open vs closed weights.', 'img/benchmarks.png', `${APP}/benchmarks`],
+    ['Paper pages', 'A structured deep read of each paper: key idea, method, insight, results, limitations, lineage and official BibTeX.', 'img/paper.png', `${APP}/paper?2304.03047`],
+  ];
+  const tabs = $('#tabs'), shots = $('#shots'), show = $('#show');
+  tabs.innerHTML = FEATS.map(([t, d], i) => `<button class="tab" data-i="${i}"><b>${t}</b><span>${d}</span><i class="tm"></i></button>`).join('');
+  shots.innerHTML = FEATS.map(([t, , src, href], i) => `<a href="${href}" aria-label="Open ${t} in the live atlas"><img src="${src}" alt="${t}" loading="lazy" data-i="${i}"></a>`).join('');
+  let cur = -1, timer = null;
+  const pick = (i) => {
+    cur = i;
+    $$('.tab', tabs).forEach((b, k) => { b.classList.toggle('on', k === i); const tm = $('.tm', b); tm.style.animation = 'none'; void tm.offsetWidth; tm.style.animation = ''; });
+    $$('img', shots).forEach((im, k) => im.classList.toggle('on', k === i));
+  };
+  const auto = () => { clearInterval(timer); timer = setInterval(() => pick((cur + 1) % FEATS.length), 6000); };
+  tabs.addEventListener('click', (e) => { const b = e.target.closest('.tab'); if (!b) return; pick(+b.dataset.i); clearInterval(timer); show.classList.add('paused'); });
+  pick(0); new IntersectionObserver((es) => { if (es[0].isIntersecting && !show.classList.contains('paused')) auto(); else clearInterval(timer); }, { threshold: 0.3 }).observe(show);
+
+  // ── charts ──
+  function yearsChart(O) {
+    const svg = $('#yearsChart'), ys = Object.keys(O.years).map(Number).filter((y) => y >= 2015).sort();
+    const pre = Object.entries(O.years).filter(([y]) => +y < 2015).reduce((a, [, v]) => a.map((x, i) => x + v[i]), O.paradigms.map(() => 0));
+    const rows = [['≤2014', pre], ...ys.map((y) => [String(y), O.years[y]])];
+    const W = 640, H = 300, L = 34, B = 26, T = 10, mx = Math.max(...rows.map(([, v]) => v.reduce((a, b) => a + b, 0)));
+    const bw = (W - L) / rows.length, sc = (H - B - T) / mx;
+    let out = '';
+    for (let g = 0; g <= mx; g += Math.ceil(mx / 4 / 100) * 100) { const y = H - B - g * sc; out += `<line x1="${L}" x2="${W}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.06)"/><text x="${L - 6}" y="${y + 4}" text-anchor="end" fill="#8a90b2" font-size="10">${g}</text>`; }
+    rows.forEach(([lab, v], i) => {
+      let y = H - B; const x = L + i * bw + bw * 0.16, w = bw * 0.68;
+      v.forEach((n, k) => { if (!n) return; const h = n * sc; y -= h;
+        const yr = lab.startsWith('≤') ? '' : lab;
+        out += `<a href="${APP}/library?pd=${O.paradigms[k].code}${yr ? `&yr=${yr}` : ''}"><rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, h - 1)}" rx="2" fill="${COLORS[k]}" opacity=".9"><title>${lab} · ${O.paradigms[k].label}: ${n}</title></rect></a>`; });
+      out += `<text x="${x + w / 2}" y="${H - 8}" text-anchor="middle" fill="#8a90b2" font-size="10">${lab.replace('20', "'")}</text>`;
+    });
+    svg.innerHTML = out;
+    if (!yearsChart.hooked) { yearsChart.hooked = 1; redraws.push(() => yearsChart(O)); }
+  }
+  function benchChart(O) {
+    const mx = Math.max(...O.benchmarks.map((b) => b[1]));
+    $('#benchChart').innerHTML = O.benchmarks.slice(0, 10).map(([b, n], i) => `<a class="bench-row" style="text-decoration:none" href="${APP}/benchmarks?bench=${encodeURIComponent(b)}"><span>${esc(b)}</span><span class="b" style="width:${(n / mx) * 100}%;transition-delay:${i * 60}ms"></span><span>${n}</span></a>`).join('');
+  }
+
+  // ── terminal ──
+  const SCRIPT = [
+    ['c', '# browse NavAtlas locally: no API key, no LLM'],
+    ['p', 'git clone https://github.com/billzhao1030/SurveyAtlas && cd SurveyAtlas'],
+    ['p', './install.sh --start'],
+    ['o', '✓ navatlas restored from snapshot · hub → http://localhost:8668'],
+    ['c', '# a new field: Claude drafts the domain file from a brief'],
+    ['p', './atlas new llmagents --title AgentAtlas'],
+    ['p', './atlas draft llmagents --brief "LLM agents since 2023: tool use, memory, harnesses"'],
+    ['p', './atlas ready llmagents && ./atlas update llmagents --full'],
+    ['o', 'harvest → merge → classify → venues → build ✓   (open http://localhost:8668/#/llmagents)'],
+    ['p', './atlas ask llmagents "which memory designs work best for long-horizon agents?"'],
+    ['p', './atlas cron install --daily --publish'],
+  ];
+  const term = $('#term');
+  let started = false;
+  async function typeTerm() {
+    if (started) return; started = true;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, RM ? 0 : ms));
+    for (;;) {
+      term.innerHTML = '';
+      for (const [k, line] of SCRIPT) {
+        const div = document.createElement('div'); term.appendChild(div);
+        if (k === 'p') { div.innerHTML = '<span class="p">❯</span> '; const sp = document.createElement('span'); div.appendChild(sp); const car = document.createElement('span'); car.className = 'caret'; div.appendChild(car);
+          for (const ch of line) { sp.textContent += ch; await sleep(18 + Math.random() * 26); } car.remove(); await sleep(380); }
+        else { div.className = k; div.textContent = line; await sleep(k === 'o' ? 650 : 280); }
+      }
+      await sleep(5200);
+    }
+  }
+  new IntersectionObserver((es) => { if (es[0].isIntersecting) typeTerm(); }, { threshold: 0.3 }).observe(term);
+
+  // cite
+  $('#copyBib').addEventListener('click', () => { navigator.clipboard.writeText($('#bib').textContent).then(() => { $('#copyBib').textContent = 'Copied'; setTimeout(() => ($('#copyBib').textContent = 'Copy'), 1500); }); });
+})();
+</script>
+</body>
+</html>

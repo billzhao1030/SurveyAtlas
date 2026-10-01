@@ -1,0 +1,12 @@
+# Extra arXiv ids harvested by id (papers the queries miss). One per line.
+2310.07896  # NoMaD
+1912.01734  # ALFRED
+1808.10654  # Gibson Env
+2309.16650  # ConceptGraphs
+2106.14405  # Habitat 2.0
+1709.06158  # Matterport3D
+1712.05474  # AI2-THOR
+2012.02924  # iGibson 1.0
+2402.15852  # added 2026-09-29 via add.sh
+1706.06551  # added 2026-09-30 via atlas add
+1706.07230  # added 2026-09-30 via atlas add

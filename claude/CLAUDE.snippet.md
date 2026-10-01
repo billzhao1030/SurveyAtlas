@@ -1,0 +1,3 @@
+## Literature atlases (managed by the SurveyAtlas repo's install.sh — edit the repo, not this block)
+
+- **Domain literature atlas (harvest → LLM classify → venue/BibTeX → multi-atlas site on :8668)** → skill `literature-atlas`; playbook `~/.claude/reference/literature-atlas-pattern.md` (symlink into the repo). Repo: `{{REPO}}` — CLI `./atlas` (new / update / add / build / start / snapshot / restore / cron). Each field is `atlases/<id>/atlas.py`; NavAtlas (embodied navigation) is the worked example. Read the playbook before building a new atlas — it lists the API pitfalls (arXiv 429 + stemming, DBLP bot wall, S2 year, OpenAlex stemming) that cost real time.

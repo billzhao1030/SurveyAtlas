@@ -1,0 +1,44 @@
+# Publishes the SurveyAtlas project page (docs/project, at the site root) and NavAtlas as a static, read-only
+# website (at /navatlas/) on GitHub Pages.
+name: Deploy project page + NavAtlas to GitHub Pages
+
+on:
+  # Run by hand (Actions → Run workflow). The maintainer's copy of the project page lives on their homepage instead;
+  # in a fork, enable Settings → Pages → Source: GitHub Actions and add a `push: branches: [main]` trigger here.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install requests
+      - name: Rebuild the atlas from its snapshot (no API calls, no LLM)
+        run: ./atlas restore navatlas
+      - name: Export the project page and the static atlas
+        run: ./atlas export navatlas _site --project-page
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

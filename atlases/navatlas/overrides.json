@@ -1,0 +1,165 @@
+{
+ "2412.04453": {
+  "venue": "RSS",
+  "venue_year": 2025
+ },
+ "2412.06224": {
+  "venue": "RSS",
+  "venue_year": 2025
+ },
+ "2310.07896": {
+  "venue": "ICRA",
+  "venue_year": 2024
+ },
+ "oa:W7213479485": {
+  "scope": "out"
+ },
+ "2011.03618": {
+  "scope": "out"
+ },
+ "2406.00375": {
+  "scope": "out"
+ },
+ "oa:W4283658195": {
+  "scope": "out"
+ },
+ "2208.00759": {
+  "scope": "out"
+ },
+ "2404.06529": {
+  "scope": "out"
+ },
+ "2202.02440": {
+  "name": "ZER"
+ },
+ "2602.15724": {
+  "results": false
+ },
+ "2608.15284": {
+  "results": false
+ },
+ "2609.15195": {
+  "nonstandard": {
+   "RxR-CE|val-unseen": "English-only (guide) instructions: a subset of RxR-CE",
+   "R2R-CE|val-unseen": "1,000-step budget instead of the standard 500"
+  }
+ },
+ "2606.08992": {
+  "nonstandard": {
+   "R2R-CE|val-unseen": "260-step budget instead of the standard 500"
+  }
+ },
+ "2606.00095": {
+  "nonstandard": {
+   "R2R-CE|val-unseen": "200-step budget instead of the standard 500"
+  }
+ },
+ "2505.07868": {
+  "paradigm": "fm-tuned"
+ },
+ "2511.14131": {
+  "paradigm": "pretrain"
+ },
+ "2603.20804": {
+  "paradigm": "pretrain"
+ },
+ "2607.26148": {
+  "name": "Minimal-Interface"
+ },
+ "2603.06480": {
+  "paradigm": "fm-tuned"
+ },
+ "2603.07080": {
+  "paradigm": "fm-tuned"
+ },
+ "2603.13782": {
+  "paradigm": "fm-tuned"
+ },
+ "2604.19536": {
+  "paradigm": "fm-tuned"
+ },
+ "2604.24391": {
+  "paradigm": "fm-tuned"
+ },
+ "2308.10141": {
+  "paradigm": "pretrain"
+ },
+ "2606.01565": {
+  "paradigm": "fm-tuned"
+ },
+ "2408.02535": {
+  "paradigm": "specialist"
+ },
+ "2602.15400": {
+  "name": "GTA"
+ },
+ "2301.07302": {
+  "paradigm": "pretrain"
+ },
+ "2403.14158": {
+  "paradigm": "pretrain"
+ },
+ "2601.04699": {
+  "paradigm": "fm-tuned"
+ },
+ "2301.12614": {
+  "nonstandard": {
+   "REVERIE|val-unseen": "explores each scene exhaustively before grounding (OSR 100, SPL 3.5): equivalent to pre-exploration"
+  }
+ },
+ "2603.07997": {
+  "nonstandard": {
+   "R2R|val-unseen": "memory learns from ground-truth episode outcomes during evaluation"
+  }
+ },
+ "2406.17960": {
+  "paradigm": "pretrain"
+ },
+ "2403.11487": {
+  "results": false
+ },
+ "2503.13966": {
+  "paradigm": "pretrain"
+ },
+ "2507.13152": {
+  "nonstandard": {
+   "R2R|val-unseen": "memory learns from ground-truth episode outcomes during evaluation"
+  }
+ },
+ "2603.09259": {
+  "name": "RoomTour3D-IGR"
+ },
+ "2203.02764": {
+  "name": "CWP-RecBERT"
+ },
+ "2110.02207": {
+  "name": "WPN"
+ },
+ "2203.05137": {
+  "name": "CM2"
+ },
+ "2012.05292": {
+  "name": "CMTP"
+ },
+ "2011.10972": {
+  "name": "CMG-AAL"
+ },
+ "1909.02244": {
+  "name": "PreSS"
+ },
+ "2403.14163": {
+  "name": "LROGNav"
+ },
+ "2106.15648": {
+  "name": "L2M"
+ },
+ "2204.09667": {
+  "name": "Sim2Sim"
+ },
+ "1908.03409": {
+  "name": "ALTR"
+ },
+ "2203.16586": {
+  "name": "CCC"
+ }
+}

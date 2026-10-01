@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If SurveyAtlas or the NavAtlas data helps your research, please cite it as below."
+title: "SurveyAtlas: Living Literature Surveys for Fast-Moving Research Fields"
+abstract: >-
+  SurveyAtlas turns a research field's literature into a self-updating website: papers are harvested from arXiv
+  and OpenAlex, classified into a field taxonomy by an LLM, linked to venues, citations and BibTeX, deep-read into
+  structured notes with verified benchmark numbers, and served as a searchable library, a task-by-paradigm map,
+  a timeline, benchmark leaderboards and a question-answering page. NavAtlas, the first atlas, covers
+  vision-and-language navigation and embodied navigation.
+type: software
+authors:
+  - family-names: Zhao
+    given-names: Xunyi
+    alias: billzhao1030
+repository-code: "https://github.com/billzhao1030/SurveyAtlas"
+license: MIT
+keywords:
+  - literature review
+  - living survey
+  - large language models
+  - vision-and-language navigation
+  - embodied AI
+  - benchmark leaderboard

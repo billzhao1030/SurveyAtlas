@@ -1,0 +1,724 @@
+#!/usr/bin/env python3
+"""atlas — one command for every literature atlas in this repo.
+
+  ./atlas list                                   atlases, sizes, build dates
+  ./atlas new <id> --title T [--subtitle S] [--field F] [--description D]   scaffold atlases/<id>
+  ./atlas meta <id> [--title T] [--subtitle S] [--description D]   rename / re-describe (display only)
+  ./atlas rename <old-id> <new-id>              change an atlas's id (folder, URLs, default setting)
+  ./atlas delete <id> [--force]                  remove an atlas (refuses one with data unless --force)
+  ./atlas draft <id> --brief "…"                 headless Claude drafts atlas.py from a brief (stays not-ready)
+  ./atlas check <id>                             validate the domain file · ./atlas ready <id>: check + unlock
+  ./atlas update <id>|--all [--full] [--prescreen haiku]   harvest → merge → classify → venues → build → digest
+  ./atlas add <id> <arXiv id or URL>...          add specific papers now (~1 min)
+  ./atlas build <id>                             rebuild atlases/<id>/public/ from data/
+  ./atlas <step> <id> [args]                     single step: harvest | harvest-oa | merge | classify |
+                                                 resolve | build | digest | recall | read (deep reading)
+  ./atlas ask <id> "question"                    answer a question from the atlas (cites papers; needs the claude CLI)
+  ./atlas export <id> <dir> [--keep-surveys]     static read-only copy of the site (GitHub Pages, any web host)
+  ./atlas survey <id> <sid> init|assign|packs|bib|pdf|status   survey workspace (atlases/<id>/surveys/<sid>/)
+  ./atlas serve [--port 8668] [--host H]         run the hub in the foreground (127.0.0.1 unless --host / local.json "host")
+  ./atlas start | stop | status                  run the hub in the background (hub/.serve.pid)
+  ./atlas snapshot <id> [--with-raw]             pack data/ into atlases/<id>/snapshot/ (commit it)
+  ./atlas restore <id> [--force]                 unpack snapshot/ into data/ and rebuild
+  ./atlas backup [--no-push]                     snapshot every atlas + commit the snapshots (+ push if a remote exists)
+  ./atlas admin-key [--rotate]                   key + one-time links that unlock editing from another device
+  ./atlas password [--set PW]                    site password other devices must enter (initially 0000)
+  ./atlas cron install [--daily | --when "13 5 * * 0"] [--publish] | remove | show   scheduled `update --all` (default weekly;
+                                                 --publish also commits + pushes the snapshots so the public site redeploys)
+
+Engine steps run as `ATLAS=<id> python3 -m engine.<step>` from the repo root.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import gzip
+import importlib.util
+import io
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import time
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent
+ATLASES = REPO / "atlases"
+PIDFILE = REPO / "hub" / ".serve.pid"
+SERVE_LOG = REPO / "hub" / "serve.log"
+CRON_MARK = "# atlas-hub weekly update"
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+STEPS = {
+    "harvest": "engine.harvest_arxiv", "harvest-oa": "engine.harvest_openalex", "merge": "engine.merge",
+    "classify": "engine.classify", "resolve": "engine.resolve_venues", "build": "engine.build",
+    "digest": "engine.digest", "recall": "engine.recall_check", "read": "engine.read", "comparable": "engine.comparable", "audit": "engine.audit", "variants": "engine.variants", "affil": "engine.affil", "share": "engine.shared",
+    "survey": "engine.survey", "ask": "engine.ask", "export": "engine.export",
+}
+ENV_PATH = os.pathsep.join([str(Path.home() / ".local" / "bin"), os.environ.get("PATH", "/usr/bin:/bin")])
+
+
+def default_host() -> str:
+    """Bind address: ATLAS_HOST, else local.json "host", else this machine only."""
+    try:
+        cfg = json.loads((REPO / "local.json").read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    return os.environ.get("ATLAS_HOST") or cfg.get("host") or "127.0.0.1"
+
+
+def die(msg: str) -> None:
+    sys.exit(f"atlas: {msg}")
+
+
+def atlas_ids() -> list[str]:
+    return sorted(p.name for p in ATLASES.iterdir() if p.is_dir() and ID_RE.match(p.name) and (p / "atlas.py").exists())
+
+
+def need(aid: str) -> str:
+    if aid not in atlas_ids():
+        die(f"no atlas '{aid}' — have: {', '.join(atlas_ids()) or '(none)'}")
+    return aid
+
+
+def domain(aid: str):
+    spec = importlib.util.spec_from_file_location(f"d_{aid}", ATLASES / aid / "atlas.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def run_step(aid: str, step: str, args: list[str], log=None) -> int:
+    env = {**os.environ, "ATLAS": aid, "PATH": ENV_PATH, "PYTHONUNBUFFERED": "1"}
+    cmd = [sys.executable, "-m", STEPS[step], *args]
+    if log is None:
+        return subprocess.call(cmd, cwd=REPO, env=env)
+    p = subprocess.Popen(cmd, cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in p.stdout:
+        sys.stdout.write(line)
+        log.write(line)
+        log.flush()
+    return p.wait()
+
+
+class Lock:
+    """One pipeline run per atlas at a time (cron + a manual run must not both write labels)."""
+
+    def __init__(self, aid: str):
+        self.path = ATLASES / aid / "data" / ".update.lock"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def __enter__(self):
+        self.f = open(self.path, "w")
+        try:
+            fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            self.f.close()
+            return None
+        return self
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+
+META_KEYS = ("title", "subtitle", "description", "field")
+
+
+def set_meta(aid: str, patch: dict) -> None:
+    """Rewrite keys inside the META = {...} block of atlases/<id>/atlas.py (display fields only),
+    and patch public/meta.json so the hub shows the change without a rebuild."""
+    f = ATLASES / aid / "atlas.py"
+    src = f.read_text()
+    m = re.search(r"^META = \{\n(.*?)^\}", src, re.S | re.M)
+    if not m:
+        die(f"no META block in {f}")
+    block = m.group(1)
+    for k, v in patch.items():
+        if k not in META_KEYS or v is None:
+            continue
+        lit = json.dumps(str(v).strip(), ensure_ascii=False)
+        line_re = re.compile(rf'^(\s*)"{k}":\s*(?:"(?:[^"\\]|\\.)*"|\([^)]*\)),?[^\n]*$', re.M)
+        if line_re.search(block):
+            block = line_re.sub(lambda mm: f'{mm.group(1)}"{k}": {lit},', block, count=1)
+        else:
+            block = block.rstrip("\n") + f'\n    "{k}": {lit},\n'
+    src = src[: m.start(1)] + block + src[m.end(1):]
+    compile(src, str(f), "exec")  # never leave a broken domain file behind
+    f.write_text(src)
+    pm = ATLASES / aid / "public" / "meta.json"
+    if pm.exists():
+        meta = json.loads(pm.read_text())
+        meta.update({k: v for k, v in patch.items() if k in META_KEYS and v is not None})
+        pm.write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+
+
+def check_domain(aid: str) -> list[str]:
+    """Return a list of problems (empty = ready to run)."""
+    errs = []
+    try:
+        d = domain(aid)
+    except Exception as ex:  # syntax / import error
+        return [f"atlas.py does not load: {ex!r}"]
+    need_names = ["META", "ARXIV_QUERIES", "OPENALEX_QUERIES", "RELEVANCE_RE", "OA_STRICT_RE", "OA_STRICT_CS_RE",
+                  "SCOPES", "TASKS", "SETTINGS", "PARADIGMS", "CONTRIBS", "TRAITS", "BENCHMARKS",
+                  "CLASSIFY_ROLE", "CLASSIFY_RULES", "LANDMARKS", "UI"]
+    errs += [f"missing {n}" for n in need_names if not hasattr(d, n)]
+    if errs:
+        return errs
+    scopes = [s[0] for s in d.SCOPES]
+    if "core" not in scopes or "out" not in scopes:
+        errs.append("SCOPES must contain 'core' and 'out'")
+    if not d.PARADIGMS or d.PARADIGMS[-1][0] != "none":
+        errs.append("PARADIGMS must end with a 'none' paradigm")
+    if any(len(p) != 4 for p in d.PARADIGMS):
+        errs.append("PARADIGMS entries are (code, label, line, definition)")
+    if len(d.ARXIV_QUERIES) < 5:
+        errs.append(f"only {len(d.ARXIV_QUERIES)} arXiv queries (playbook: 40-60)")
+    try:
+        json.dumps(d.UI)
+    except TypeError as ex:
+        errs.append(f"UI is not JSON-serialisable: {ex}")
+    src = (ATLASES / aid / "atlas.py").read_text()
+    todo = len(re.findall(r"\bTODO", src))
+    if todo:
+        errs.append(f"{todo} TODO placeholder(s) left in atlas.py")
+    if META_ID := getattr(d, "META", {}).get("id"):
+        if META_ID != aid:
+            errs.append(f"META id '{META_ID}' != folder '{aid}'")
+    return errs
+
+
+# ───────────────────────── commands ─────────────────────────
+def cmd_list(_):
+    print(f"{'id':14s} {'title':28s} {'core':>6s} {'total':>6s}  built       ready")
+    for i in atlas_ids():
+        m = {}
+        try:
+            m = json.loads((ATLASES / i / "public" / "meta.json").read_text())
+        except (OSError, ValueError):
+            pass
+        ready = getattr(domain(i), "DOMAIN_READY", False)
+        print(f"{i:14s} {str(m.get('title', '—'))[:28]:28s} {m.get('n_core', 0):6d} {m.get('n_papers', 0):6d}  "
+              f"{(m.get('built_at') or 'not built')[:10]:10s}  {'yes' if ready else 'NO (edit atlas.py)'}")
+
+
+def cmd_new(a):
+    aid = a.id
+    if not ID_RE.match(aid) or aid.startswith("_"):
+        die("id must be lowercase letters/digits/-/_ (e.g. agentatlas)")
+    dst = ATLASES / aid
+    if dst.exists():
+        die(f"{dst} already exists")
+    shutil.copytree(ATLASES / "_template", dst)
+    f = dst / "atlas.py"
+    s = f.read_text()
+    for k, v in {"{{ID}}": aid, "{{TITLE}}": a.title, "{{SUBTITLE}}": a.subtitle or f"{a.field or a.title} Literature Atlas",
+                 "{{FIELD}}": a.field or a.title, "{{TODAY}}": date.today().isoformat()}.items():
+        s = s.replace(k, v)
+    f.write_text(s)
+    if a.description:
+        set_meta(aid, {"description": a.description})
+    (dst / "seeds.txt").write_text("# Extra arXiv ids harvested by id (papers the queries miss). One per line, '#' comments.\n")
+    (dst / "overrides.json").write_text("{}\n")
+    print(f"created atlases/{aid}/ — next:\n"
+          f"  1. edit atlases/{aid}/atlas.py (scope + taxonomy first, agree them with the user; then queries, rules, landmarks, UI)\n"
+          f"  2. set DOMAIN_READY = True\n"
+          f"  3. ./atlas classify {aid} --print-prompt     # read the rendered classifier prompt\n"
+          f"  4. ./atlas update {aid} --full                # first full run (harvest ~30 min, classify ~40 min per 10k)\n"
+          f"  playbook: claude/skills/literature-atlas/playbook.md")
+
+
+def cmd_update(a):
+    ids = [i for i in atlas_ids() if getattr(domain(i), "DOMAIN_READY", False)] if a.all else [need(a.id)]
+    if not ids:
+        die("no atlas with DOMAIN_READY = True")
+    for aid in ids:
+        with Lock(aid) as lk:
+            if lk is None:
+                print(f"[{aid}] another update is running — skipped")
+                continue
+            logs = ATLASES / aid / "data" / "logs"
+            logs.mkdir(parents=True, exist_ok=True)
+            with open(logs / f"update-{datetime.now():%Y%m%d-%H%M}.log", "a") as log:
+                def step(name, *args):
+                    log.write(f"-- {name} {' '.join(args)}\n")
+                    print(f"[{aid}] -- {name} {' '.join(args)}", flush=True)
+                    rc = run_step(aid, name, list(args), log)
+                    if rc:
+                        msg = f"!! {name} failed (exit {rc}) — continuing; retried next run\n"
+                        log.write(msg)
+                        print(msg, end="")
+                    return rc
+
+                print(f"== {aid} update {datetime.now().isoformat(timespec='seconds')}")
+                if a.full:
+                    step("harvest")
+                    step("harvest-oa")
+                else:
+                    step("harvest", "--since", (date.today() - timedelta(days=62)).strftime("%Y-%m"))
+                step("merge")
+                step("classify", "--workers", "4", *(["--prescreen", a.prescreen] if a.prescreen else []))
+                step("resolve")
+                step("affil", "--openalex")  # industry authorship: cached full texts, then OpenAlex for the rest (stops at the daily budget)
+                step("build")
+                step("digest", "--since", (date.today() - timedelta(days=6)).isoformat())
+                step("recall")
+                print(f"== {aid} done {datetime.now().isoformat(timespec='seconds')}")
+
+
+def cmd_add(a):
+    aid = need(a.id)
+    ids = []
+    for x in a.papers:
+        m = re.search(r"(\d{4}\.\d{4,5})", x)
+        if not m:
+            print(f"not an arXiv id: {x}")
+            continue
+        ids.append(m.group(1))
+    if not ids:
+        die("no arXiv ids given")
+    seeds = ATLASES / aid / "seeds.txt"
+    have = seeds.read_text() if seeds.exists() else ""
+    with open(seeds, "a") as f:
+        for i in ids:
+            if not re.search(rf"^{re.escape(i)}\b", have, re.M):
+                f.write(f"{i}  # added {date.today()} via atlas add\n")
+    with Lock(aid) as lk:
+        if lk is None:
+            die("an update is running — try again in a few minutes")
+        for s, args in [("harvest", ["--seeds-only"]), ("merge", []), ("classify", ["--workers", "2"]), ("resolve", []), ("build", [])]:
+            run_step(aid, s, args)
+    papers = {p["id"]: p for p in json.loads((ATLASES / aid / "public" / "papers.json").read_text())}
+    excl = {e["id"]: e for e in json.loads((ATLASES / aid / "public" / "excluded.json").read_text())}
+    for i in ids:
+        p = papers.get(i)
+        if p:
+            print(f"✓ {i} [{p['sc']}] {p.get('n') or ''} — {p['t'][:70]}\n    {p['pd']} · {', '.join(p['tk'])} · {p.get('v') or 'arXiv'}\n"
+                  f"    http://localhost:8668/#/{aid}/paper?{i}")
+        elif i in excl:
+            print(f"✗ {i} excluded ({excl[i]['why']}) — {excl[i]['t'][:70]}\n"
+                  f"    wrong? add {{\"{i}\": {{\"scope\": \"core\"}}}} to atlases/{aid}/overrides.json, then ./atlas build {aid}")
+        else:
+            print(f"? {i} not found on arXiv")
+
+
+def cmd_step(a):
+    sys.exit(run_step(need(a.id), a.cmd, a.rest))
+
+
+# ── hub server ──
+def _pid() -> int | None:
+    try:
+        pid = int(PIDFILE.read_text())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def cmd_serve(a):
+    os.execv(sys.executable, [sys.executable, str(REPO / "hub" / "serve.py"), "--port", str(a.port), "--host", a.host])
+
+
+def cmd_start(a):
+    if _pid():
+        print(f"hub already running (pid {_pid()})")
+        return
+    with open(SERVE_LOG, "a") as log:
+        p = subprocess.Popen([sys.executable, str(REPO / "hub" / "serve.py"), "--port", str(a.port), "--host", a.host],
+                             cwd=REPO, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    PIDFILE.write_text(str(p.pid))
+    time.sleep(0.6)
+    print(f"hub started (pid {p.pid}) → http://localhost:{a.port}/" if p.poll() is None else f"hub failed to start — see {SERVE_LOG}")
+
+
+def cmd_stop(_):
+    pid = _pid()
+    if pid:
+        os.kill(pid, signal.SIGTERM)
+        print(f"stopped (pid {pid})")
+    else:
+        print("not running")
+    PIDFILE.unlink(missing_ok=True)
+
+
+def cmd_status(_):
+    pid = _pid()
+    print(f"hub running (pid {pid})" if pid else "hub not running")
+    cmd_list(None)
+
+
+# ── snapshots (portable data, committed to git) ──
+SNAP_FILES = [  # (path under data/, snapshot name, needs --with-raw)
+    ("labels/labels.jsonl", "labels.jsonl.gz", False),
+    ("meta/s2.jsonl", "s2.jsonl.gz", False),
+    ("meta/crossref_bib.jsonl", "crossref_bib.jsonl.gz", False),
+    ("marks.json", "marks.json.gz", False),
+    # token-costly caches: stable cite keys (survey LaTeX depends on them), protocol judge, audit, benchmark versions,
+    # full-text links, prescreen verdicts
+    ("meta/cite_keys.json", "cite_keys.json.gz", False),
+    ("meta/comparable.json", "comparable.json.gz", False),
+    ("meta/audit.json", "audit.json.gz", False),
+    ("meta/variants.json", "variants.json.gz", False),
+    ("meta/affil.json", "affil.json.gz", False),
+    ("meta/protocols.json", "protocols.json.gz", False),
+    ("meta/fulltext_links.json", "fulltext_links.json.gz", False),
+    ("labels/prescreen_keep.txt", "prescreen_keep.txt.gz", False),
+    ("raw/arxiv.jsonl", "raw-arxiv.jsonl.gz", True),
+    ("raw/openalex.jsonl", "raw-openalex.jsonl.gz", True),
+]
+
+
+def _gz_write(src: Path, dst: Path) -> None:
+    # mtime=0 → identical data gives identical bytes, so git sees no change
+    with open(src, "rb") as fi, open(dst, "wb") as fo, gzip.GzipFile(filename="", mode="wb", fileobj=fo, mtime=0, compresslevel=9) as gz:
+        shutil.copyfileobj(fi, gz)
+
+
+def snapshot_policy() -> dict:
+    """local.json "snapshot": {"skip": ["marks", "surveys"], "drop_fields": ["summary_zh"]} — what a committed (possibly
+    public) snapshot leaves out: whole parts by name (marks, surveys, reading, or a snapshot file name) and reading-note fields."""
+    try:
+        cfg = json.loads((REPO / "local.json").read_text()).get("snapshot") or {}
+    except (OSError, ValueError):
+        cfg = {}
+    return {"skip": set(cfg.get("skip") or []), "drop_fields": list(cfg.get("drop_fields") or [])}
+
+
+def cmd_snapshot(a):
+    aid = need(a.id)
+    data, snap = ATLASES / aid / "data", ATLASES / aid / "snapshot"
+    snap.mkdir(exist_ok=True)
+    pol = snapshot_policy()
+    manifest = {"atlas": aid, "date": date.today().isoformat(), "files": {}}
+    for rel, name, raw in SNAP_FILES:
+        src = data / rel
+        if raw and not a.with_raw:
+            continue
+        if name in pol["skip"] or name.split(".")[0] in pol["skip"]:
+            (snap / name).unlink(missing_ok=True)
+            continue
+        if src.exists():
+            _gz_write(src, snap / name)
+            manifest["files"][name] = {"from": rel, "lines": sum(1 for _ in open(src, "rb"))}
+    for sub, pattern in (("reading", "*.json"), ("surveys", "*/*.jsonl")):  # deep-reading notes, survey assignments
+        d = data / sub
+        files = sorted(d.glob(pattern)) if d.is_dir() else []
+        if sub in pol["skip"]:
+            (snap / f"{sub}.tar.gz").unlink(missing_ok=True)
+            continue
+        if not files:
+            continue
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as t:
+            for f in files:
+                info = t.gettarinfo(str(f), arcname=f"{sub}/{f.relative_to(d)}")
+                info.mtime = 0
+                raw_bytes = f.read_bytes()
+                if sub == "reading" and pol["drop_fields"]:
+                    try:
+                        note = json.loads(raw_bytes)
+                        if any(k in note for k in pol["drop_fields"]):
+                            for k in pol["drop_fields"]:
+                                note.pop(k, None)
+                            raw_bytes = (json.dumps(note, ensure_ascii=False, indent=1) + "\n").encode()
+                    except ValueError:
+                        pass
+                info.size = len(raw_bytes)
+                t.addfile(info, io.BytesIO(raw_bytes))
+        with open(snap / f"{sub}.tar.gz", "wb") as fo, gzip.GzipFile(filename="", mode="wb", fileobj=fo, mtime=0) as gz:
+            gz.write(buf.getvalue())
+        manifest["files"][f"{sub}.tar.gz"] = {"from": f"{sub}/", "files": len(files)}
+    (snap / "MANIFEST.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    size = sum(f.stat().st_size for f in snap.iterdir()) / 1e6
+    print(f"snapshot → atlases/{aid}/snapshot/ ({size:.1f} MB): {', '.join(manifest['files'])}")
+    if not getattr(a, "quiet", False):
+        print(f"commit it:  git add atlases/{aid}/snapshot && git commit -m 'snapshot {aid}'   (or: ./atlas backup)")
+
+
+def cmd_restore(a):
+    aid = need(a.id)
+    data, snap = ATLASES / aid / "data", ATLASES / aid / "snapshot"
+    if not (snap / "MANIFEST.json").exists():
+        die(f"no snapshot in atlases/{aid}/snapshot/")
+    for rel, name, _ in SNAP_FILES:
+        src, dst = snap / name, data / rel
+        if not src.exists():
+            continue
+        if dst.exists() and not a.force:
+            print(f"keep existing data/{rel} (use --force to overwrite)")
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(src, "rb") as fi, open(dst, "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+        print(f"restored data/{rel}")
+    for sub in ("reading", "surveys"):
+        if (snap / f"{sub}.tar.gz").exists():
+            with tarfile.open(snap / f"{sub}.tar.gz", "r:gz") as t:
+                t.extractall(data, filter="data") if sys.version_info >= (3, 12) else t.extractall(data)
+            print(f"restored data/{sub}/")
+    if (data / "raw" / "arxiv.jsonl").exists():
+        run_step(aid, "merge", [])
+        run_step(aid, "build", [])
+    else:
+        print(f"no raw harvest in the snapshot — run ./atlas update {aid} --full "
+              f"(re-harvests; papers already labelled are NOT re-classified)")
+
+
+# ── cron ──
+def cmd_cron(a):
+    try:
+        cur = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        die("crontab not available on this machine")
+    lines = [l for l in cur.splitlines() if CRON_MARK not in l]
+    if a.action == "show":
+        print("\n".join(l for l in cur.splitlines() if CRON_MARK in l) or "(no atlas cron entry)")
+        return
+    if a.action == "install":
+        if getattr(a, "daily", False):
+            a.when = "13 5 * * *"
+        # pin this interpreter: cron's bare PATH may resolve `python3` to a system Python without `requests`
+        then = f"; {sys.executable} {REPO / 'atlas'} backup > /dev/null 2>&1" if getattr(a, "publish", False) else ""
+        lines.append(f"{a.when} {sys.executable} {REPO / 'atlas'} update --all > /dev/null 2>&1{then}  {CRON_MARK}")
+    subprocess.run(["crontab", "-"], input="\n".join(lines).rstrip() + "\n", text=True, check=True)
+    print(f"installed: {lines[-1]}" if a.action == "install" else "removed the atlas cron entry")
+
+
+def cmd_meta(a):
+    aid = need(a.id)
+    set_meta(aid, {"title": a.title, "subtitle": a.subtitle, "description": a.description, "field": a.field})
+    print(f"updated META of {aid}")
+
+
+def cmd_check(a):
+    errs = check_domain(need(a.id))
+    print("\n".join(f"✗ {e}" for e in errs) if errs else f"✓ {a.id}: domain file looks complete")
+    sys.exit(1 if errs else 0)
+
+
+def cmd_ready(a):
+    aid = need(a.id)
+    errs = check_domain(aid)
+    if errs and not a.force:
+        print("\n".join(f"✗ {e}" for e in errs))
+        die("not ready (fix the above, or --force)")
+    f = ATLASES / aid / "atlas.py"
+    src = f.read_text()
+    f.write_text(re.sub(r"^DOMAIN_READY = False", "DOMAIN_READY = True", src, count=1, flags=re.M))
+    print(f"✓ {aid} is ready — first run: ./atlas update {aid} --full")
+
+
+def cmd_delete(a):
+    aid = need(a.id)
+    adir = ATLASES / aid
+    has_data = (adir / "public" / "meta.json").exists() or (adir / "data" / "labels" / "labels.jsonl").exists() or (adir / "snapshot").exists()
+    if has_data and not a.force:
+        die(f"'{aid}' has data (labels / build / snapshot) — refusing. Use --force if you really want it gone "
+            f"(committed snapshots stay in git history).")
+    lock = adir / "data" / ".update.lock"
+    if lock.exists():
+        with open(lock, "w") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                die("an update is running on this atlas — try again later")
+    shutil.rmtree(adir)
+    st = REPO / "settings.json"
+    if st.exists():
+        s = json.loads(st.read_text())
+        if s.get("default_atlas") == aid:
+            s["default_atlas"] = ""
+            st.write_text(json.dumps(s, ensure_ascii=False, indent=1) + "\n")
+    print(f"deleted atlases/{aid}/")
+
+
+def cmd_rename(a):
+    old, new = need(a.old), a.new
+    if not ID_RE.match(new) or new.startswith("_") or (ATLASES / new).exists():
+        die(f"bad or existing id '{new}'")
+    lock = ATLASES / old / "data" / ".update.lock"
+    if lock.exists():
+        with open(lock, "w") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                die("an update is running on this atlas — try again later")
+    (ATLASES / old).rename(ATLASES / new)
+    f = ATLASES / new / "atlas.py"
+    f.write_text(re.sub(r'("id":\s*)"[^"]*"', rf'\1"{new}"', f.read_text(), count=1))
+    for fn in ("meta.json",):
+        pm = ATLASES / new / "public" / fn
+        if pm.exists():
+            m = json.loads(pm.read_text()); m["id"] = new; pm.write_text(json.dumps(m, ensure_ascii=False, indent=1))
+    st = REPO / "settings.json"
+    if st.exists():
+        s = json.loads(st.read_text())
+        if s.get("default_atlas") == old:
+            s["default_atlas"] = new
+            st.write_text(json.dumps(s, ensure_ascii=False, indent=1) + "\n")
+    print(f"renamed {old} → {new} (old links #/{old}/… now fall back to the default atlas)")
+
+
+DRAFT_PROMPT = """You are setting up a NEW literature atlas in the Atlas repo (cwd). Atlas id: {id}. Title: {title}. Field: {field}.
+
+Read, in this order:
+1. claude/skills/literature-atlas/playbook.md — sections 0, 1, 2, 4 and 6 (6 may already sketch this field).
+2. atlases/_template/atlas.py — the required structure.
+3. atlases/navatlas/atlas.py — the worked example (quality bar: its queries, scope rules and classifier rules).
+
+The user's brief for this field:
+<<<
+{brief}
+>>>
+
+Write a complete DRAFT of atlases/{id}/atlas.py, replacing every TODO:
+- META: keep id, title, subtitle, field, bulk_date as they are; write a one-sentence description.
+- ARXIV_QUERIES: 40-60 queries layered as the playbook says (field phrases in all spellings, benchmark/dataset names,
+  task names, method family x field, a title safety net restricted to CS categories). Parenthesise mixed AND/OR.
+- OPENALEX_QUERIES (narrower), RELEVANCE_RE, OA_STRICT_RE, OA_STRICT_CS_RE (acronyms case-sensitive).
+- SCOPES (core / adjacent / optional parked / out) with CONCRETE positive and negative examples; TASKS; SETTINGS;
+  PARADIGMS as the survey's storyline with testable deciding questions, ending with ("none", ...); CONTRIBS; TRAITS; BENCHMARKS.
+- CLASSIFY_ROLE and CLASSIFY_RULES in the style of the NavAtlas example.
+- LANDMARKS: 30-60 must-have papers. Only include arXiv ids you are confident about and add a trailing comment `# verify`
+  to every entry — the recall check will verify them against arXiv.
+- UI: task_groups, paradigm_lines, paradigm_note, timeline_intro, era_split, presets, 2-3 survey outlines, roadmap.
+Keep DOMAIN_READY = False. Do not create or modify any other file (you only have write access to atlases/{id}/). The file must import cleanly (python3 -c 'import ast; ast.parse(open(...).read())').
+
+Finish by printing a short summary (<= 12 lines) of the scope and paradigm decisions the user must confirm before the first run."""
+
+
+def cmd_draft(a):
+    aid = need(a.id)
+    d = domain(aid)
+    brief = a.brief or (Path(a.brief_file).read_text() if a.brief_file else "")
+    if not brief.strip():
+        die("give --brief or --brief-file (what the field is, what is in/out, what storyline the survey should tell)")
+    (ATLASES / aid / "BRIEF.md").write_text(brief.strip() + "\n")
+    prompt = DRAFT_PROMPT.format(id=aid, title=d.META.get("title", aid), field=d.META.get("field", aid), brief=brief.strip())
+    # write access ONLY inside this atlas's folder; reading is free; nothing else may run
+    scope = f"./atlases/{aid}/**"
+    cmd = ["claude", "-p", "--model", a.model, "--no-session-persistence", "--permission-mode", "default",
+           "--allowedTools", "Read", "Glob", "Grep", f"Write({scope})", f"Edit({scope})", "Bash(python3 -c:*)"]
+    print(f"drafting atlases/{aid}/atlas.py with Claude ({a.model}) — this takes a few minutes…", flush=True)
+    env = {**os.environ, "PATH": ENV_PATH}
+    r = subprocess.run(cmd, input=prompt, cwd=REPO, env=env, capture_output=True, text=True, timeout=3600)
+    out = (r.stdout or "") + (("\n" + r.stderr) if r.returncode else "")
+    (ATLASES / aid / "DRAFT_NOTES.md").write_text(f"# Draft notes ({datetime.now():%Y-%m-%d %H:%M})\n\n{out.strip()}\n")
+    print(out.strip())
+    errs = check_domain(aid)
+    print("\ncheck:", "OK — review atlas.py, then ./atlas ready " + aid if not errs else "; ".join(errs))
+    sys.exit(r.returncode)
+
+
+def cmd_backup(a):
+    done = []
+    for aid in atlas_ids():
+        if (ATLASES / aid / "data" / "labels" / "labels.jsonl").exists():
+            with Lock(aid) as lk:
+                if lk is None:
+                    print(f"[{aid}] update running — snapshot skipped this time")
+                    continue
+                cmd_snapshot(argparse.Namespace(id=aid, with_raw=True, quiet=True))
+                done.append(aid)
+    git = lambda *x: subprocess.run(["git", *x], cwd=REPO, capture_output=True, text=True)
+    if git("rev-parse", "--is-inside-work-tree").returncode:
+        print("not a git repo — snapshots written, nothing committed")
+        return
+    # only snapshots and site settings: a backup never commits work in progress elsewhere in the tree
+    paths = [str(Path("atlases") / aid / "snapshot") for aid in done] + ["settings.json"]
+    paths = [x for x in paths if git("check-ignore", "-q", x).returncode != 0]  # private atlases stay local (.git/info/exclude)
+    git("add", "-A", "--", *paths)
+    if git("diff", "--cached", "--quiet", "--", *paths).returncode:
+        r = git("commit", "-m", f"data refresh {date.today()}: {', '.join(done) or 'settings'}", "--", *paths)
+        print(r.stdout.strip().splitlines()[0] if r.stdout.strip() else r.stderr.strip())
+    else:
+        print("nothing changed since the last backup")
+    if a.no_push:
+        return
+    if git("remote").stdout.strip():
+        r = git("push", "-q")
+        print("pushed" if r.returncode == 0 else f"push failed: {r.stderr.strip()[:300]}")
+    else:
+        print("no git remote — committed locally only (git remote add origin <url> to enable push)")
+
+
+def cmd_admin_key(a):
+    f = REPO / "local.json"
+    try:
+        cfg = json.loads(f.read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    if a.rotate or not cfg.get("admin_key"):
+        import secrets
+        cfg["admin_key"] = secrets.token_urlsafe(12)
+        f.write_text(json.dumps(cfg, indent=2) + "\n")
+        if a.rotate:
+            print("new key — restart the hub (./atlas stop && ./atlas start); devices unlocked with the old key are locked again")
+    key = cfg["admin_key"]
+    port = os.environ.get("ATLAS_PORT", "8668")
+    ips = subprocess.run(["hostname", "-I"], capture_output=True, text=True).stdout.split()
+    print(f"admin key: {key}\n\nOpen once on the other device (stores the key in that browser):")
+    for ip in [i for i in ips if ":" not in i and not i.startswith("172.17.")] or ["<this-machine-ip>"]:
+        print(f"  http://{ip}:{port}/#/unlock/{key}")
+
+
+def cmd_password(a):
+    """Set the site password that other devices must enter (stored hashed in local.json; this machine is never asked)."""
+    import getpass
+    sys.path.insert(0, str(REPO / "hub"))
+    import serve  # noqa: E402  (hub/serve.py: same hashing as the running server)
+    pw = a.set or getpass.getpass("new site password: ")
+    if not a.set and getpass.getpass("repeat: ") != pw:
+        raise SystemExit("the two passwords differ")
+    if len(pw) < 4:
+        raise SystemExit("use at least 4 characters")
+    serve.set_site_password(pw)
+    print("site password saved; every device except this machine must sign in again (no restart needed)")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(prog="atlas", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("list").set_defaults(fn=cmd_list)
+    p = sub.add_parser("new"); p.add_argument("id"); p.add_argument("--title", required=True); p.add_argument("--subtitle"); p.add_argument("--field"); p.add_argument("--description"); p.set_defaults(fn=cmd_new)
+    p = sub.add_parser("meta"); p.add_argument("id"); p.add_argument("--title"); p.add_argument("--subtitle"); p.add_argument("--description"); p.add_argument("--field"); p.set_defaults(fn=cmd_meta)
+    p = sub.add_parser("check"); p.add_argument("id"); p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("ready"); p.add_argument("id"); p.add_argument("--force", action="store_true"); p.set_defaults(fn=cmd_ready)
+    p = sub.add_parser("rename"); p.add_argument("old"); p.add_argument("new"); p.set_defaults(fn=cmd_rename)
+    p = sub.add_parser("delete"); p.add_argument("id"); p.add_argument("--force", action="store_true"); p.set_defaults(fn=cmd_delete)
+    p = sub.add_parser("draft"); p.add_argument("id"); p.add_argument("--brief"); p.add_argument("--brief-file"); p.add_argument("--model", default="opus"); p.set_defaults(fn=cmd_draft)
+    p = sub.add_parser("backup"); p.add_argument("--no-push", action="store_true"); p.set_defaults(fn=cmd_backup)
+    p = sub.add_parser("admin-key"); p.add_argument("--rotate", action="store_true"); p.set_defaults(fn=cmd_admin_key)
+    p = sub.add_parser("password"); p.add_argument("--set", metavar="PASSWORD", help="set without prompting"); p.set_defaults(fn=cmd_password)
+    p = sub.add_parser("update"); p.add_argument("id", nargs="?"); p.add_argument("--all", action="store_true"); p.add_argument("--full", action="store_true")
+    p.add_argument("--prescreen", metavar="MODEL", help="cheap scope-only pass first (e.g. haiku) — for very large fields"); p.set_defaults(fn=cmd_update)
+    p = sub.add_parser("add"); p.add_argument("id"); p.add_argument("papers", nargs="+"); p.set_defaults(fn=cmd_add)
+    for s in STEPS:
+        p = sub.add_parser(s, prefix_chars="\0"); p.add_argument("id"); p.add_argument("rest", nargs="*"); p.set_defaults(fn=cmd_step)
+    for s, fn in [("serve", cmd_serve), ("start", cmd_start)]:
+        p = sub.add_parser(s); p.add_argument("--port", type=int, default=int(os.environ.get("ATLAS_PORT", 8668)))
+        p.add_argument("--host", default=default_host(), help="127.0.0.1 (default) = this machine only; 0.0.0.0 = LAN, behind the site password")
+        p.set_defaults(fn=fn)
+    sub.add_parser("stop").set_defaults(fn=cmd_stop)
+    sub.add_parser("status").set_defaults(fn=cmd_status)
+    p = sub.add_parser("snapshot"); p.add_argument("id"); p.add_argument("--with-raw", action="store_true"); p.set_defaults(fn=cmd_snapshot)
+    p = sub.add_parser("restore"); p.add_argument("id"); p.add_argument("--force", action="store_true"); p.set_defaults(fn=cmd_restore)
+    p = sub.add_parser("cron"); p.add_argument("action", choices=["install", "remove", "show"]); p.add_argument("--when", default="13 5 * * 0")
+    p.add_argument("--daily", action="store_true", help='same as --when "13 5 * * *"')
+    p.add_argument("--publish", action="store_true", help="after each update run `backup` (commit + push the snapshots; a Pages workflow then redeploys the site)")
+    p.set_defaults(fn=cmd_cron)
+    a = ap.parse_args()
+    if a.cmd == "update" and not a.all and not a.id:
+        die("update needs an atlas id or --all")
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

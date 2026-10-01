@@ -1,0 +1,8 @@
+{
+ "default_atlas": "navatlas",
+ "theme": "light",
+ "background": "paper",
+ "bg_custom": "#f4f1ea",
+ "accent": "indigo",
+ "density": "cards"
+}

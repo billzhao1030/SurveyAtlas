@@ -1,0 +1,18 @@
+# runtime data + build output (portable copy: ./atlas snapshot → atlases/<id>/snapshot/)
+atlases/*/data/
+atlases/*/public/
+# survey manuscripts build here; commit sources deliberately (see atlases/<id>/surveys/<sid>/.gitignore)
+atlases/*/surveys/*/packs/
+# machine-local: contact e-mail, admin key, site password hash, bind address
+local.json
+hub/.serve.pid
+hub/serve.log
+hub/jobs/
+.settings.json.tmp
+# static exports
+/_site/
+/site/
+# python / os
+__pycache__/
+*.pyc
+.DS_Store
