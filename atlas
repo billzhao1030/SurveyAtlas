@@ -8,7 +8,8 @@
   ./atlas delete <id> [--force]                  remove an atlas (refuses one with data unless --force)
   ./atlas draft <id> --brief "…"                 headless Claude drafts atlas.py from a brief (stays not-ready)
   ./atlas check <id>                             validate the domain file · ./atlas ready <id>: check + unlock
-  ./atlas update <id>|--all [--full] [--prescreen haiku]   harvest → merge → classify → venues → build → digest
+  ./atlas update <id>|--all [--full] [--prescreen haiku] [--no-read] [--read-anytime]
+                                   harvest → merge → classify → venues → build → read new papers → versions → protocol check → audit → build → digest
   ./atlas add <id> <arXiv id or URL>...          add specific papers now (~1 min)
   ./atlas build <id>                             rebuild atlases/<id>/public/ from data/
   ./atlas <step> <id> [args]                     single step: harvest | harvest-oa | merge | classify |
@@ -257,6 +258,7 @@ def cmd_update(a):
                     return rc
 
                 print(f"== {aid} update {datetime.now().isoformat(timespec='seconds')}")
+                started = date.today().isoformat()
                 if a.full:
                     step("harvest")
                     step("harvest-oa")
@@ -267,9 +269,47 @@ def cmd_update(a):
                 step("resolve")
                 step("affil", "--openalex")  # industry authorship: cached full texts, then OpenAlex for the rest (stops at the daily budget)
                 step("build")
+                read_new(aid, step, started, a)
                 step("digest", "--since", (date.today() - timedelta(days=6)).isoformat())
                 step("recall")
                 print(f"== {aid} done {datetime.now().isoformat(timespec='seconds')}")
+
+
+def read_new(aid: str, step, started: str, a) -> None:
+    """The reading half of an update: deep-read the papers this update added, then refresh everything built on the
+    readings (benchmark versions, protocol check, head audit of each survey's boards) and rebuild.
+
+    READ_ON_UPDATE in atlas.py: "new" (default) reads only papers first seen in this update, "all" also catches up on
+    any unread in-scope paper, False turns reading off (e.g. while a large backlog is read separately at night).
+    Reading honours local.json "read_window" unless --read-anytime is given.
+    """
+    mode = getattr(domain(aid), "READ_ON_UPDATE", "new")
+    if not mode or a.no_read:
+        return
+    pub = ATLASES / aid / "public" / "papers.json"
+    if not pub.exists():
+        return
+    papers = json.loads(pub.read_text())
+    skip = set(getattr(domain(aid), "META", {}).get("read_skip_scopes", [])) | {"out"}
+    rdir = ATLASES / aid / "data" / "reading"
+    todo = [p["id"] for p in papers if p.get("sc") not in skip and (p.get("fs") or "") >= started]
+    if mode == "all":
+        todo += [p["id"] for p in papers if p.get("sc") not in skip and p["id"] not in todo
+                 and not (rdir / f"{p['id'].replace('/', '_').replace(':', '_')}.json").exists()]
+    extra = ["--anytime"] if a.read_anytime else []
+    if todo:
+        step("read", "--ids", *todo, *extra)
+    step("variants")
+    step("comparable")
+    for sv in surveys_of(aid):
+        step("audit", sv)
+    step("build")
+
+
+def surveys_of(aid: str) -> list[str]:
+    ids = [s["id"] for s in getattr(domain(aid), "SURVEYS", [])]
+    ids += [f.parent.name for f in sorted((ATLASES / aid / "surveys").glob("*/survey.py"))]
+    return list(dict.fromkeys(ids))
 
 
 def cmd_add(a):
@@ -698,7 +738,9 @@ def main() -> None:
     p = sub.add_parser("admin-key"); p.add_argument("--rotate", action="store_true"); p.set_defaults(fn=cmd_admin_key)
     p = sub.add_parser("password"); p.add_argument("--set", metavar="PASSWORD", help="set without prompting"); p.set_defaults(fn=cmd_password)
     p = sub.add_parser("update"); p.add_argument("id", nargs="?"); p.add_argument("--all", action="store_true"); p.add_argument("--full", action="store_true")
-    p.add_argument("--prescreen", metavar="MODEL", help="cheap scope-only pass first (e.g. haiku) — for very large fields"); p.set_defaults(fn=cmd_update)
+    p.add_argument("--prescreen", metavar="MODEL", help="cheap scope-only pass first (e.g. haiku) — for very large fields")
+    p.add_argument("--no-read", action="store_true", help="skip the reading half (read, variants, comparable, audit, rebuild)")
+    p.add_argument("--read-anytime", action="store_true", help="read now even outside local.json read_window"); p.set_defaults(fn=cmd_update)
     p = sub.add_parser("add"); p.add_argument("id"); p.add_argument("papers", nargs="+"); p.set_defaults(fn=cmd_add)
     for s in STEPS:
         p = sub.add_parser(s, prefix_chars="\0"); p.add_argument("id"); p.add_argument("rest", nargs="*"); p.set_defaults(fn=cmd_step)

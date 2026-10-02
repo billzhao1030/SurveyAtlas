@@ -1250,7 +1250,7 @@
         <label class="btn"><input type="checkbox" id="lbOk" ${LB.ok ? 'checked' : ''} style="margin:0 4px 0 0">verified only</label>
       </div>
       <div class="lb-pd">${pdChips}</div>
-      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">${fmt(rows.length)} of ${fmt(allN)} results on <b>${esc(LB.bench)}</b> · ${esc(LB.split)} — sorted by <b>${esc(key)}</b> ${dir < 0 ? '↓' : '↑'}. <b class="subset">subset</b> = evaluated on part of the split (hover for which); ⚑ = privileged info / extra conditions (hover); ✓ = every number found verbatim in the paper.</p>
+      <p class="muted" style="font-size:12.5px;margin:4px 0 10px">${fmt(rows.length)} of ${fmt(allN)} results on <b>${esc(LB.bench)}</b> · ${esc(LB.split)}, sorted by <b>${esc(key)}</b> ${dir < 0 ? '↓' : '↑'}. <b class="subset">subset</b> = evaluated on part of the split (hover for which); ⚑ = privileged info / extra conditions (hover); ✓ = every number found verbatim in the paper. Numbers and flags are extracted by a language model and can be wrong: open the paper to see the quoted evidence.</p>
       <div class="g-table lb-table"><table class="qtable"><thead><tr><th>#</th><th>Method</th><th>Paradigm</th><th>Backbone</th><th>Set</th>${metrics.map((m) => `<th class="num sortable${m === key ? ' on' : ''}" data-sort="${esc(m)}">${esc(m)}${m === key ? (dir < 0 ? ' ↓' : ' ↑') : ''}</th>`).join('')}<th></th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-open="${esc(r.id)}">
         <td class="num">${i + 1}</td>

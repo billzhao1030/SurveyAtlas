@@ -12,6 +12,7 @@ literature-atlas skill, or claude/skills/literature-atlas/playbook.md):
   5. LANDMARKS                       verify every id against its arXiv title
   6. UI                              map groups, presets, survey outlines
 then set DOMAIN_READY = True and run `./atlas update {{ID}} --full`.
+READ_ON_UPDATE = "new"  # read the papers each update adds ("all" also catches up, False turns it off)
 """
 import re
 

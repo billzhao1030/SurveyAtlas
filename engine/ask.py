@@ -35,7 +35,7 @@ YEAR_RE = re.compile(r"\b(after|since|from|before|until|in|during|post|pre)[- ]?
                      r"|\b((?:19|20)\d\d)\s*(?:-|–|to|and)\s*((?:19|20)\d\d)\b", re.I)
 BROAD = re.compile(r"\b(chang\w*|trend\w*|evolv\w*|evolution|history|overview|landscape|progress|open (?:problems?|questions?|challenges?)"
                    r"|challenges?|future|directions?|gaps?|state of the (?:art|field)|summar\w*|surveys?|main approaches|paradigms?|lines of work)\b", re.I)
-ASK_VERSION = 2  # bump when retrieval or the prompt changes: cached answers are not reused across versions
+ASK_VERSION = 4  # bump when retrieval or the prompt changes: cached answers are not reused across versions
 _LOCK = threading.Lock()
 _INDEX: dict[str, dict] = {}
 
@@ -142,6 +142,23 @@ def label(p: dict) -> str:
     return t if not n or t.lower().startswith(n.lower()) else f"{n}: {t}"
 
 
+_DOMAINS: dict = {}
+
+
+def _domain(adir: Path):
+    """The atlas's own field file (atlases/<id>/atlas.py), loaded without engine.ctx so the hub can call Ask for any atlas."""
+    if adir not in _DOMAINS:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(f"ask_domain_{adir.name}", adir / "atlas.py")
+        mod = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:  # noqa: BLE001  (a broken field file must not break Ask)
+            mod = None
+        _DOMAINS[adir] = mod
+    return _DOMAINS[adir]
+
+
 def board_rows(adir: Path, q: str, limit: int = 12, per_paradigm: int = 6) -> list[dict]:
     """Best full-split results on a benchmark the question names (longest match wins): the overall top `limit`
     plus the top `per_paradigm` of every paradigm, so questions about one family are answerable too."""
@@ -155,21 +172,31 @@ def board_rows(adir: Path, q: str, limit: int = 12, per_paradigm: int = 6) -> li
     names = sorted(counts, key=len, reverse=True)
     ql = f" {q.lower()} "
     hit = next((b for b in names if re.search(rf"(?<![a-z0-9-]){re.escape(b.lower())}(?![a-z0-9-])", ql)), None)
-    if not hit:  # spelled differently, or a versioned benchmark named without its version: take the variant with most results
-        cands = [b for b in names if len(norm(b)) >= 4 and (norm(b) in qn or re.sub(r"v\d$", "", norm(b)) in qn)]
-        hit = max(cands, key=lambda b: (len(re.sub(r"v\d$", "", norm(b))), counts[b]), default=None)
+    dom = _domain(adir)
+    al = {**getattr(dom, "BENCH_ALIASES", {}), **getattr(dom, "ASK_ALIASES", {})}  # "VLN-CE" -> R2R-CE, "Instance-ImageNav" -> HM3D-IIN
+    via = next((a for a in sorted(al, key=lambda a: len(norm(a)), reverse=True) if norm(a) in qn and al[a] in counts), None)
+    if via and (not hit or (len(norm(via)), counts[al[via]]) > (len(norm(hit)), counts[hit])):  # longer match wins, then the bigger board
+        hit = al[via]
+    if not hit:  # spelled differently: a version the question names wins; otherwise take the variant with most results
+        exact = [b for b in names if len(norm(b)) >= 4 and norm(b) in qn]
+        cands = exact or [b for b in names if len(norm(b)) >= 4 and re.sub(r"v\d$", "", norm(b)) in qn]
+        hit = max(cands, key=lambda b: (len(norm(b)) if exact else len(re.sub(r"v\d$", "", norm(b))), counts[b]), default=None)
     if not hit:
         return []
-    rs = [r for r in rows if r.get("bench") == hit and r.get("eval_set") != "subset" and r.get("ok") is not False]
-    split = Counter(r.get("split") for r in rs).most_common(1)
-    rs = [r for r in rs if split and r.get("split") == split[0][0]]
+    from engine.rowrules import _pct, nonstandard, usable  # the rules the leaderboards use: audit verdicts override the judge
+    moved = {r["id"] for r in rows if r.get("bench") == hit and r.get("audit_std") is False}
+    rs = [r for r in rows if r.get("bench") == hit and r.get("eval_set") != "subset" and usable(r)]
+    splits = Counter(r.get("split") for r in rs)
+    named = [sp for sp in splits if sp and re.search(r"(?<![a-z0-9])" + "[- ]?".join(map(re.escape, sp.lower().split("-"))) + r"(?![a-z0-9])", q.lower())]
+    split = max(named, key=len) if named else (splits.most_common(1)[0][0] if splits else None)  # the split the question names wins
+    rs = [r for r in rs if split and r.get("split") == split]
     metric = next((m for m in ("SR", "SPL", "GP", "RGS", "Success") if any(m in (r.get("m") or {}) for r in rs)), None)
     if not metric:
         return []
 
     def val(r):
         try:
-            return float(str((r.get("m") or {}).get(metric)).rstrip("%"))
+            return _pct(metric, float(str((r.get("m") or {}).get(metric)).rstrip("%"))) or 0.0
         except ValueError:
             return -1.0
     best = {}
@@ -181,7 +208,9 @@ def board_rows(adir: Path, q: str, limit: int = 12, per_paradigm: int = 6) -> li
         keep += [r for r in ranked if r.get("pd") == pd][:per_paradigm]
     keep = sorted({id(r): r for r in keep}.values(), key=val, reverse=True)
     return [{"id": r["id"], "method": r.get("method"), "bench": hit, "split": r.get("split"), "metric": metric,
-             "m": r.get("m"), "year": r.get("y"), "pd": r.get("pd"), "zero_shot": r.get("zs"), "comparable": r.get("cmp")}
+             "m": r.get("m"), "year": r.get("y"), "pd": r.get("pd"), "zero_shot": r.get("zs"),
+             "comparable": not (nonstandard(r) or (r["id"] in moved and "audit_std" not in r)),
+             "why": "" if not nonstandard(r) else (r.get("audit_note") if r.get("audit_std") is False else r.get("cmp_why")) or ""}
             for r in keep]
 
 
@@ -198,7 +227,7 @@ def context_block(papers: list[dict], rows: list[dict]) -> str:
         out.append("Best reported full-split results on " + rows[0]["bench"] + " " + str(rows[0]["split"]) + " by " + rows[0]["metric"] +
                    " (as reported by each paper; 'comparable' = no protocol deviation found):\n" +
                    "\n".join(f"- [{r['id']}] {r['method']} ({r['year']}, {r['pd']}{', zero-shot' if r['zero_shot'] else ''}"
-                             f"{'' if r['comparable'] is not False else ', NOT directly comparable'}): "
+                             f"{'' if r['comparable'] is not False else ', NOT directly comparable' + (': ' + r['why'][:120] if r.get('why') else '')}): "
                              + ", ".join(f"{k} {v}" for k, v in (r["m"] or {}).items()) for r in rows))
     return "\n\n".join(out)
 

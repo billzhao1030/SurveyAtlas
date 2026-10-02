@@ -7,6 +7,7 @@ use this file as the worked example.
 import re
 
 DOMAIN_READY = True  # harvest / classify refuse to run while False
+READ_ON_UPDATE = "all"  # read every new paper and any unread in-scope paper on each update
 
 META = {
     "id": "navatlas",
@@ -239,6 +240,9 @@ BENCH_VARIANTS = {"HM3D-ObjNav": {
 # Different benchmark names used for the same benchmark (applied before variants).
 BENCH_DISPLAY = {"HM3D-ObjNav-v1": "HM3D ObjectNav v1", "HM3D-ObjNav-v2": "HM3D ObjectNav v2", "MP3D-ObjNav": "MP3D ObjectNav"}
 BENCH_ALIASES = {"IVLN-CE": "IR2R-CE", "IVLN": "IR2R", "Iterative R2R-CE": "IR2R-CE", "Iterative R2R": "IR2R", "VLN-CE": "R2R-CE"}
+# How questions on the Ask page name benchmarks (matched after punctuation and case are removed).
+ASK_ALIASES = {"Instance-ImageNav": "HM3D-IIN", "Instance ImageNav": "HM3D-IIN", "instance image navigation": "HM3D-IIN",
+               "OVON": "HM3D-OVON", "GOAT": "GOAT-Bench", "R2R in continuous environments": "R2R-CE"}
 # Metric names that mean the benchmark's main metric on these benchmarks (e.g. subtask success = SR on GOAT-Bench).
 METRIC_ALIASES = {"GOAT-Bench": {"s-SR": "SR", "Subtask SR": "SR"}, "IR2R-CE": {"s-SR": "SR"}, "IR2R": {"s-SR": "SR"}}
 # Iterative VLN (IVLN, Krantz et al. 2022): tours of consecutive episodes in one scene — a different benchmark from R2R(-CE).
