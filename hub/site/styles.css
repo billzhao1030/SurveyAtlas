@@ -434,6 +434,66 @@ svg.chart .dl { fill: var(--ink-2); font-weight: 600; }
 .lm-item .c { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .lm-item:hover .t { color: var(--accent-ink); }
 
+/* ───────── summary ───────── */
+.sm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.sm-tile { padding: 14px 16px; }
+.sm-tile[data-go] { cursor: pointer; }
+.sm-tile[data-go]:hover { border-color: var(--line-2); }
+.sm-l { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.sm-v { font: 600 30px/1.15 var(--serif); margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+.sm-s { font-size: 12.5px; color: var(--ink-2); }
+.sm-ins { padding: 14px 20px; }
+.sm-ins h3 { margin: 0 0 6px; font: 600 17px var(--serif); }
+.sm-ins ul { margin: 0; padding-left: 18px; columns: 2 420px; column-gap: 32px; }
+.sm-ins li { margin: 4px 0; break-inside: avoid; color: var(--ink-2); }
+.sm-ins b { color: var(--ink); }
+.sm-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 14px; margin-top: 14px; }
+.sm-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 14px; }
+svg.chart .sm-bar { fill: color-mix(in srgb, var(--accent) 38%, transparent); }
+svg.chart .sm-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+svg.chart .sm-pt { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+svg.chart .sm-area { stroke: var(--surface); stroke-width: 1.5; }
+svg.chart .hit { fill: transparent; cursor: pointer; }
+svg.chart .hit:hover { fill: color-mix(in srgb, var(--ink) 5%, transparent); }
+svg.chart .sm-dl { fill: var(--ink-2); font-weight: 600; }
+svg.chart .sm-lab { fill: var(--ink-2); font-size: 12px; }
+svg.chart .sm-conn { stroke: var(--line-2); stroke-width: 2; }
+svg.chart .sm-then { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+svg.chart .sm-now { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+svg.chart .sm-delta { fill: var(--ink-2); font-size: 11.5px; }
+.sm-k { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.sm-k-now { background: var(--accent); }
+.sm-k-then { border: 1.5px solid var(--muted); background: var(--surface); }
+.sm-k-line { width: 16px; height: 2px; border-radius: 1px; background: var(--accent); }
+.sm-db-legend { margin-bottom: 10px; }
+.sm-db-legend span { cursor: default; }
+.sm-data { margin-top: 8px; font-size: 12.5px; }
+.sm-data summary { cursor: pointer; color: var(--muted); }
+.sm-data .tbl-wrap { overflow-x: auto; }
+.sm-data table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+.sm-data th, .sm-data td { padding: 3px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sm-data th:first-child, .sm-data td:first-child { text-align: left; }
+table.sm-bm { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.sm-bm th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.sm-bm td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+table.sm-bm tbody tr { cursor: pointer; }
+table.sm-bm tbody tr:hover { background: var(--surface-2); }
+table.sm-bm .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sm-bmn { font-weight: 600; }
+.sm-spark { width: 96px; height: 24px; display: block; }
+.sm-spark rect { fill: var(--accent); }
+.sm-who { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; }
+.sm-who h4 { margin: 0 0 6px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.sm-note { margin: -2px 0 6px; font-size: 11.5px; color: var(--muted); }
+.sm-subh { margin: 4px 0 6px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.sm-bl { display: grid; grid-template-columns: minmax(70px, 120px) 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0; cursor: pointer; }
+.sm-bl .k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.sm-bl .b { height: 8px; background: var(--bg-2); border-radius: 4px; overflow: hidden; }
+.sm-bl .b i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.sm-bl .n { font-variant-numeric: tabular-nums; color: var(--muted); }
+.sm-bl:hover .k { color: var(--accent-ink); }
+@media (max-width: 560px) { .sm-grid2, .sm-grid3 { grid-template-columns: 1fr; } .sm-v { font-size: 24px; } }
+
 /* ───────── benchmarks ───────── */
 .bm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
 .bm-group { padding: 16px 18px 10px; }
@@ -561,6 +621,7 @@ pre.cmd { font: 12.5px/1.6 var(--mono); background: var(--bg-2); border: 1px sol
 .am-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); margin-top: 6px; padding: 8px 10px 4px; font-size: 12.5px; }
 .am-foot button { border: 0; background: none; color: var(--accent-ink); cursor: pointer; font-size: 12.5px; padding: 0; }
 .tabs.hidden { visibility: hidden; }
+.tabs a.hidden { display: none; }
 
 /* ───────── hub: settings panel ───────── */
 .settings .drawer-panel { width: min(540px, 100%); }

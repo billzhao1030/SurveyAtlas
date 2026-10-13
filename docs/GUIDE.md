@@ -17,6 +17,7 @@
 
 | Page | What it is for |
 |---|---|
+| **Summary** | The field at a glance: growth, the paradigm shift, rising and cooling tasks and techniques, trending papers per year, the most used benchmarks and who publishes. Click any chart to open its papers |
 | **Library** | Search and filter papers. Export BibTeX, `\cite{}` or CSV. The page you will use most |
 | **Ask** | Ask a question in plain language. The answer comes from the atlas only and cites its papers |
 | **Map** | Heat matrix of tasks × method paradigms. Dark cells are mature directions, empty cells are open ones. Click a cell to see its papers |
@@ -222,7 +223,7 @@ claude        # log in once; classification, deep reading and Ask use it
 
 `./atlas export <id> <dir>` writes a static, read-only copy of the site. Host it on GitHub Pages or any web server.
 
-- It contains Library, Ask, Map, Timeline, Benchmarks, Surveys and paper pages.
+- It contains Summary, Library, Ask, Map, Timeline, Benchmarks, Surveys and paper pages.
 - Ask matches papers in the browser; it does not write answers.
 - Stars and notes stay in each visitor's own browser.
 - Editing, jobs and backups are turned off.
@@ -236,6 +237,13 @@ python3 -m http.server -d /tmp/navatlas-site 8000
 ```
 
 The repo ships a GitHub Actions workflow, `.github/workflows/pages.yml`, that exports NavAtlas to GitHub Pages.
+
+To serve the live hub on the internet instead (with Ask answering), start it with `ATLAS_PUBLIC=1`:
+
+- No password, no admin and no writes. Stars and notes stay in each visitor's browser.
+- Ask answers only through the Anthropic API (`ATLAS_ASK_BACKEND=api` with `ANTHROPIC_API_KEY` set, `pip install anthropic`), never through the hub owner's Claude login.
+- Each visitor may ask 12 questions an hour and the site 300 a day (`ATLAS_ASK_HOURLY`, `ATLAS_ASK_DAILY`). Visitor addresses are kept in memory only for these limits.
+- Updates keep running on your own machine. Republish the data after each update.
 
 ## CLI cheat sheet <!-- #cli -->
 

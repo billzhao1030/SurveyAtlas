@@ -3,6 +3,8 @@
 Retrieves the most relevant papers (title, abstract, TL;DR and the deep-reading notes) plus, when the question
 names a benchmark, the best comparable results on it, and lets headless Claude answer from that context only,
 citing papers by id. Without the `claude` CLI (or with --no-llm) it returns the retrieved papers.
+ATLAS_ASK_BACKEND=api answers through the Anthropic API instead (ANTHROPIC_API_KEY, `pip install anthropic`); a public
+deployment uses only this backend, so visitors never spend the hub owner's Claude login.
 
   ./atlas ask <id> "which training-free methods lead R2R-CE?"  [--k 24] [--model sonnet] [--no-llm] [--json]
   ATLAS=<id> python3 -m engine.ask "question"
@@ -15,6 +17,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -282,6 +285,30 @@ def _claude(system: str, prompt: str, model: str, timeout: int = 240) -> str:
     return env.get("result", "")
 
 
+API_MODELS = {"sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+
+
+def backend() -> str:
+    return "api" if os.environ.get("ATLAS_ASK_BACKEND") == "api" else "cli"
+
+
+def llm_available() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY")) if backend() == "api" else bool(shutil.which("claude"))
+
+
+def _api(system: str, prompt: str, model: str, timeout: int = 240) -> str:
+    import anthropic  # only the api backend needs the SDK; the rest of the engine is stdlib-only
+    client = anthropic.Anthropic(timeout=timeout, max_retries=2)  # reads ANTHROPIC_API_KEY
+    r = client.beta.messages.create(
+        model=API_MODELS.get(model, model), max_tokens=16000, system=system,
+        messages=[{"role": "user", "content": prompt}],
+        betas=["server-side-fallback-2026-07-01"], extra_body={"fallbacks": "default"},  # a declined request is retried on Anthropic's recommended model
+    )
+    if r.stop_reason == "refusal":
+        raise RuntimeError("the model declined to answer")
+    return "".join(b.text for b in r.content if b.type == "text")
+
+
 def answer(adir: Path, q: str, k: int = 24, model: str = "sonnet", llm: bool = True) -> dict:
     q = q.strip()[:500]
     t0 = time.time()
@@ -297,7 +324,7 @@ def answer(adir: Path, q: str, k: int = 24, model: str = "sonnet", llm: bool = T
     cited_ids = {p["id"] for p in papers} | {r["id"] for r in rows} | ov_ids
     out = {"q": q, "papers": [{"id": p["id"], "n": p.get("n"), "t": p["t"], "label": label(p), "y": p.get("y"), "v": p.get("vn")} for p in papers],
            "board": rows, "answer": None, "model": None}
-    if llm and papers and shutil.which("claude"):
+    if llm and papers and llm_available():
         cache = adir / "data" / "ask_cache.jsonl"
         h = hashlib.sha1(f"{ASK_VERSION}|{q.lower()}|{k}|{model}|{(adir / 'public' / 'papers.json').stat().st_mtime}".encode()).hexdigest()[:16]
         hit = None
@@ -313,7 +340,7 @@ def answer(adir: Path, q: str, k: int = 24, model: str = "sonnet", llm: bool = T
             out.update(answer=hit["answer"], model=hit["model"], cached=True)
         else:
             prompt = f"Question: {q}\n\nContext:\n\n{(ov + chr(10) + chr(10)) if ov else ''}{context_block(papers, rows)}"
-            text = _claude(system_prompt(meta), prompt, model)
+            text = (_api if backend() == "api" else _claude)(system_prompt(meta), prompt, model)
             text = re.sub(r"\[([^\]\s]{3,40})\]", lambda m: m.group(0) if m.group(1) in cited_ids else m.group(1), text)
             out.update(answer=text, model=model)
             cache.parent.mkdir(parents=True, exist_ok=True)

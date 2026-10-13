@@ -28,6 +28,12 @@ Site password — every request from another machine needs a session cookie obta
 password (initially 0000; stored as a salted PBKDF2 hash in the gitignored local.json). This machine is never
 asked. Change it from Settings (POST /api/password {current, new}) or with `./atlas password`; a change signs
 every other device out. ATLAS_OPEN=1 disables the gate.
+
+Public deployment — ATLAS_PUBLIC=1 serves a read-only site to the internet (behind a proxy or tunnel): no password, no
+trusted IPs (proxied requests look local), no admin at all, no writes; stars and notes stay in each visitor's browser.
+Ask answers only through the Anthropic API (ATLAS_ASK_BACKEND=api with ANTHROPIC_API_KEY set), never through a local
+Claude login, with per-visitor and daily limits (ATLAS_ASK_HOURLY, default 12; ATLAS_ASK_DAILY, default 300).
+Visitor IPs are kept in memory only for those limits and are never written anywhere.
   GET/POST /login, GET /logout
 """
 from __future__ import annotations
@@ -63,8 +69,12 @@ JOB_KINDS = {
     "build": lambda a, x: ["build", a], "check": lambda a, x: ["check", a], "ready": lambda a, x: ["ready", a],
     "recall": lambda a, x: ["recall", a], "draft": lambda a, x: ["draft", a, "--brief-file", x],
 }
-ADMIN_LAN = os.environ.get("ATLAS_ADMIN_LAN") == "1"
+PUBLIC = os.environ.get("ATLAS_PUBLIC") == "1"  # read-only internet deployment (see the module docstring)
+ADMIN_LAN = os.environ.get("ATLAS_ADMIN_LAN") == "1" and not PUBLIC
 ASK_OPEN = os.environ.get("ATLAS_ASK_OPEN") == "1"  # let every viewer ask (each question spends Claude usage)
+ASK_HOURLY = int(os.environ.get("ATLAS_ASK_HOURLY", "12"))
+ASK_DAILY = int(os.environ.get("ATLAS_ASK_DAILY", "300"))
+ASK_LOG: dict[str, list[float]] = {}  # visitor -> recent question times (memory only)
 ASK_SEM = threading.Semaphore(2)
 sys.path.insert(0, str(REPO))
 from engine import ask as ASK  # noqa: E402  (stdlib-only module; no ATLAS env needed)
@@ -83,7 +93,7 @@ def own_ips() -> set[str]:
     return ips
 
 
-OWN_IPS = own_ips()
+OWN_IPS = set() if PUBLIC else own_ips()  # behind a proxy every request comes from 127.0.0.1: trust nobody
 
 
 def admin_key() -> str:
@@ -102,7 +112,7 @@ def admin_key() -> str:
 ADMIN_KEY = admin_key()
 
 # ── site password (gate for every device except this machine) ──
-GATE = os.environ.get("ATLAS_OPEN") != "1"
+GATE = os.environ.get("ATLAS_OPEN") != "1" and not PUBLIC
 PW_ITER = 240_000
 SESSION_DAYS = 30
 FAILS: dict[str, list[float]] = {}
@@ -179,6 +189,25 @@ def too_many_fails(ip: str) -> bool:
 
 
 site_password()  # create the initial password on first start
+
+
+def public_ask_ready() -> bool:
+    return ASK.backend() == "api" and ASK.llm_available()
+
+
+def ask_allowed(visitor: str) -> str | None:
+    """Public mode: None if this visitor may ask now, else the reason (per-visitor hourly and site-wide daily limits)."""
+    now = time.time()
+    for k in list(ASK_LOG):
+        ASK_LOG[k] = [t for t in ASK_LOG[k] if now - t < 86400]
+        if not ASK_LOG[k]:
+            del ASK_LOG[k]
+    if sum(len(v) for v in ASK_LOG.values()) >= ASK_DAILY:
+        return "the daily question limit of this site is reached, try again tomorrow"
+    if sum(1 for t in ASK_LOG.get(visitor, []) if now - t < 3600) >= ASK_HOURLY:
+        return f"at most {ASK_HOURLY} questions per hour, try again later"
+    ASK_LOG.setdefault(visitor, []).append(now)
+    return None
 
 
 def start_job(kind: str, atlas: str, args: list[str]) -> dict:
@@ -341,6 +370,14 @@ class Handler(SimpleHTTPRequestHandler):
     def _ip(self) -> str:
         return self.client_address[0].removeprefix("::ffff:")
 
+    def _visitor(self) -> str:
+        """The visitor's address for rate limits: the proxy's X-Forwarded-For in public mode."""
+        if PUBLIC:
+            fwd = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            if fwd:
+                return fwd
+        return self._ip()
+
     def _cookie(self, name: str) -> str:
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
@@ -405,6 +442,8 @@ class Handler(SimpleHTTPRequestHandler):
             return super().do_HEAD()
 
     def _admin(self) -> bool:
+        if PUBLIC:
+            return False
         ip = self.client_address[0].removeprefix("::ffff:")
         key = self.headers.get("X-Atlas-Key", "")
         return ADMIN_LAN or ip in OWN_IPS or (bool(key) and hmac.compare_digest(key, ADMIN_KEY))
@@ -426,6 +465,10 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, atlas_list())
         if path == "/api/settings":
             return self._json(200, load_settings())
+        if PUBLIC and (path in ("/api/jobs", "/api/backup", "/api/marks") or path.startswith("/a/") and "/survey/" in path):
+            return self._json(404, {"error": "not available on the public site"})
+        if path == "/api/whoami" and PUBLIC:
+            return self._json(200, {"admin": False, "local": False, "gate": False, "on_hub": False, "public": True, "ask": public_ask_ready()})
         if path == "/api/whoami":
             ip = self.client_address[0].removeprefix("::ffff:")
             return self._json(200, {"admin": self._admin(), "local": ADMIN_LAN or ip in OWN_IPS, "gate": GATE, "on_hub": ip in OWN_IPS,
@@ -476,6 +519,8 @@ class Handler(SimpleHTTPRequestHandler):
     # ── POST ──
     def do_POST(self):
         path = urlsplit(self.path).path
+        if PUBLIC and path != "/api/ask":
+            return self._json(403, {"error": "the public site is read-only"})
         if path == "/login":
             return self._login_post()
         if not self._gate(path):
@@ -544,18 +589,28 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {"error": "unknown or unbuilt atlas"})
             if not 3 <= len(q) <= 500:
                 return self._json(400, {"error": "ask a question of 3 to 500 characters"})
-            llm = bool(body.get("llm", True)) and (ASK_OPEN or self._admin())
+            if PUBLIC:
+                llm = bool(body.get("llm", True)) and public_ask_ready()
+                why = ask_allowed(self._visitor()) if llm else None
+                if why:
+                    res = ASK.answer(ATLASES / aid, q, llm=False)
+                    res["error"] = why + "; showing the most relevant papers"
+                    return self._json(200, res)
+            else:
+                llm = bool(body.get("llm", True)) and (ASK_OPEN or self._admin())
             if not ASK_SEM.acquire(timeout=5):
                 return self._json(429, {"error": "two questions are already being answered, try again in a moment"})
             try:
                 res = ASK.answer(ATLASES / aid, q, llm=llm)
             except Exception as e:  # noqa: BLE001  (claude missing, timeout, usage limit)
                 res = ASK.answer(ATLASES / aid, q, llm=False)
-                res["error"] = f"the model could not answer ({str(e)[:160]}); showing the most relevant papers"
+                res["error"] = ("the model could not answer right now; showing the most relevant papers" if PUBLIC
+                                else f"the model could not answer ({str(e)[:160]}); showing the most relevant papers")
             finally:
                 ASK_SEM.release()
             if not llm:
-                res["note"] = "Answers need Claude on the hub machine; this device sees the most relevant papers only."
+                res["note"] = ("Answers are not available on this site right now; the most relevant papers are listed below." if PUBLIC
+                               else "Answers need Claude on the hub machine; this device sees the most relevant papers only.")
             return self._json(200, res)
         if path == "/api/password":
             new_pw, cur = str(body.get("new", "")), str(body.get("current", ""))

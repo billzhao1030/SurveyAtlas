@@ -197,6 +197,9 @@ def main() -> None:
     ap.add_argument("--force", action="store_true")
     a = ap.parse_args()
     from engine import fulltext
+    if not (ctx.PUBLIC / "papers.json").exists():  # a new atlas before its first build: nothing to check yet
+        print("affil: no built papers yet, skipped")
+        return
     papers = json.loads((ctx.PUBLIC / "papers.json").read_text())
     cache = {} if a.force else load()
     n_text = 0

@@ -15,7 +15,9 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+  // method names as papers print them in their own tables ("X (Ours)", "Ours-RFT"): drop the self-reference
+const cleanMethod = (m) => String(m || '').replace(/\s*\((ours|our method|ours,[^)]*)\)/ig, '').replace(/^(ours|our method)\b[\s:(-]*/i, '').replace(/\)$/, (x) => (/\(/.test(String(m)) ? x : '')).trim();
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
   const fmt = (n) => Number(n || 0).toLocaleString('en-US');
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -40,7 +42,7 @@
   let T = { scope: {}, task: {}, setting: {}, pd: {}, contrib: {} };
   let PD_ORDER = [], PD_IDX = {}, TASK_GROUPS = [], PRESETS = [];
   // hub
-  let ATLASES = [], SETTINGS = {}, A = '', ADMIN = false, ADMIN_LOCAL = false, JOBS = [], GATE = false, ON_HUB = false, STATIC = false, CAN_ASK = false;
+  let ATLASES = [], SETTINGS = {}, A = '', ADMIN = false, ADMIN_LOCAL = false, JOBS = [], GATE = false, ON_HUB = false, STATIC = false, CAN_ASK = false, PUBLIC_SITE = false;
   const hubUi = { editing: null, focusNew: false, newOpen: false };
   const CACHE = {};
   // paradigm colours follow the paradigm ORDER (validated categorical slots), "none" is neutral
@@ -218,8 +220,9 @@
       fetch('api/settings').then((r) => r.json()),
       fetch('api/whoami').then((r) => r.json()).catch(() => ({ admin: false })),
     ]);
-    ATLASES = atlases; SETTINGS = settings; ADMIN = !!who.admin; ADMIN_LOCAL = !!who.local; GATE = !!who.gate; ON_HUB = !!who.on_hub; STATIC = !!who.static; CAN_ASK = !!who.ask;
+    ATLASES = atlases; SETTINGS = settings; ADMIN = !!who.admin; ADMIN_LOCAL = !!who.local; GATE = !!who.gate; ON_HUB = !!who.on_hub; STATIC = !!who.static; CAN_ASK = !!who.ask; PUBLIC_SITE = !!who.public;
     document.documentElement.classList.toggle('static', STATIC);
+    $$('#tabs a[data-view="surveys"], #tabs a[data-view="about"]').forEach((a) => a.classList.toggle('hidden', PUBLIC_SITE));  // the public site leaves out the owner's pages
     if (!ADMIN) { try { Object.assign(SETTINGS, JSON.parse(localStorage.getItem('atlas-look-local') || '{}')); } catch (_) {} }
     applySettings();
     renderSwitcher();
@@ -272,7 +275,7 @@
   }
 
   // ───────── router ─────────
-  const VIEWS = ['library', 'ask', 'map', 'timeline', 'benchmarks', 'surveys', 'survey', 'about', 'paper'];
+  const VIEWS = ['summary', 'library', 'ask', 'map', 'timeline', 'benchmarks', 'surveys', 'survey', 'about', 'paper'];
   async function route() {
     const h = location.hash.replace(/^#\/?/, '');
     const [path, qs] = h.split('?');
@@ -286,9 +289,11 @@
     $('#tabs').classList.remove('hidden');
     const ids = ATLASES.filter((x) => x.built).map((x) => x.id);
     let id = seg0, view = seg1;
-    if (!ids.includes(seg0)) { id = SETTINGS.default_atlas || ids[0]; view = VIEWS.includes(seg0) ? seg0 : 'library'; }
+    const home = PUBLIC_SITE ? 'summary' : 'library';
+    if (!ids.includes(seg0)) { id = SETTINGS.default_atlas || ids[0]; view = VIEWS.includes(seg0) ? seg0 : home; }
     if (!id) { S.view = 'atlases'; return renderHub(); }
-    view = VIEWS.includes(view) ? view : 'library';
+    view = VIEWS.includes(view) ? view : home;
+    if (PUBLIC_SITE && ['surveys', 'survey', 'about'].includes(view)) view = 'summary';
     try { await loadAtlas(id); }
     catch (err) { $('#app').innerHTML = `<div class="empty"><h3>Could not load “${esc(id)}”</h3><p>${esc(err.message)}</p></div>`; return; }
     S.view = view;
@@ -300,6 +305,7 @@
       return;
     }
     if (S.view === 'library') { hashToState(qs || ''); renderLibrary(); }
+    else if (S.view === 'summary') renderSummary();
     else if (S.view === 'ask') renderAsk();
     else if (S.view === 'map') renderMap();
     else if (S.view === 'timeline') renderTimeline();
@@ -761,7 +767,7 @@
     const keys = [...new Set(rows.flatMap((r) => Object.keys(r.m || {})))].slice(0, 5);
     const board = rows.length ? `<details class="ask-board"${res.answer ? '' : ' open'}><summary>Reported results on ${esc(rows[0].bench)} ${esc(rows[0].split || '')} (${rows.length} rows, full splits, as each paper reports them)</summary>
       <div class="g-table"><table class="qtable"><thead><tr><th>Method</th><th>Year</th><th>Paradigm</th>${keys.map((k) => `<th class="num">${esc(k)}</th>`).join('')}</tr></thead><tbody>
-      ${rows.map((r) => `<tr><td><a data-open="${esc(r.id)}" href="#/${esc(A)}/paper?${encodeURIComponent(r.id)}">${esc(String(r.method || r.id).replace(/\s*\((ours|Ours|OURS)\)/, ''))}</a>${r.comparable === false ? ' <span class="lowconf" title="protocol deviation found">not comparable</span>' : ''}</td><td>${esc(r.year || '')}</td><td><span class="dot" style="--c:${pdVar(r.pd)}"></span> ${esc(T.pd[r.pd]?.label || r.pd || '')}</td>${keys.map((k) => `<td class="num">${esc((r.m || {})[k] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : '';
+      ${rows.map((r) => `<tr><td><a data-open="${esc(r.id)}" href="#/${esc(A)}/paper?${encodeURIComponent(r.id)}">${esc(cleanMethod(r.method) || String(r.id))}</a>${r.comparable === false ? ' <span class="lowconf" title="protocol deviation found">not comparable</span>' : ''}</td><td>${esc(r.year || '')}</td><td><span class="dot" style="--c:${pdVar(r.pd)}"></span> ${esc(T.pd[r.pd]?.label || r.pd || '')}</td>${keys.map((k) => `<td class="num">${esc((r.m || {})[k] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : '';
     const order = new Map();
     const body = res.answer ? `<div class="ask-answer g-body">${citeLinks(renderMd(res.answer).html, order)}</div>`
       : `<p class="muted">${esc(res.error || res.note || (STATIC ? 'This is a static copy of the atlas: answers need a running hub with Claude. The most relevant papers are listed below.' : 'No answer was generated; the most relevant papers are listed below.'))}</p>`;
@@ -772,7 +778,7 @@
     const hist = ASKS[A] || (ASKS[A] = []);
     const ex = UIC.ask_examples || ['What changed in this field after 2023?', 'What are the main open problems?', 'Which papers introduced the most-used benchmarks?'];
     const mode = STATIC ? 'Static copy: questions are matched to papers in your browser.'
-      : CAN_ASK ? 'Answers come from Claude on the hub machine, using only this atlas (titles, abstracts, deep-reading notes and reported results), and cite papers you can open.'
+      : CAN_ASK ? 'Answers come from Claude, using only this atlas (titles, abstracts, deep-reading notes and reported results), and cite papers you can open.'
       : 'Answers need Claude on the hub machine (unlock editing, or start the hub with ATLAS_ASK_OPEN=1). Until then you get the most relevant papers.';
     $('#app').innerHTML = `
       <div class="page-head"><div><h1>Ask the atlas</h1><p>${esc(mode)}</p></div></div>
@@ -1167,6 +1173,219 @@
   function niceMax(v) { const st = niceStep(v / 5); return Math.ceil(v / st) * st; }
   function niceTicks(max) { const st = niceStep(max / 5); const out = []; for (let t = 0; t <= max + 1e-9; t += st) out.push(Math.round(t)); return out; }
 
+  // ───────── summary (dashboard) ─────────
+  function renderSummary() {
+    const DAY = 864e5, ref = Date.parse(STATS.built_at) || Date.now(), by = builtYear();
+    const ts = (p) => { const t = Date.parse(p.d || `${p.y}-07-01`); return Number.isNaN(t) ? null : t; };
+    const win = (list, from, to) => list.filter((p) => { const t = ts(p); return t != null && t > ref - to * DAY && t <= ref - from * DAY; });
+    const core = P.filter((p) => p.sc === 'core');
+    const last = win(core, 0, 365), prev = win(core, 365, 730);
+    const isMethod = (p) => p.pd && p.pd !== 'none';
+    const lineOf = (p) => T.pd[p.pd]?.line || '-';
+    const frac = (list, f) => (list.length ? list.filter(f).length / list.length : 0);
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const pp = (d) => `${d >= 0 ? '+' : '−'}${Math.abs(d * 100).toFixed(1)} pp`;
+    const scGo = { sc: ['core'] };
+    const lines = [...new Set(TAX.paradigms.map((x) => x.line || '-'))];
+    const tfLine = lines.includes('training-free') ? 'training-free' : null;
+    const lineLab = UIC.paradigm_lines || {};
+    const mLast = last.filter(isMethod), mPrev = prev.filter(isMethod);
+
+    // headline numbers
+    const growth = prev.length ? last.length / prev.length - 1 : null;
+    const y0 = by - 4, mY0 = core.filter((p) => p.y === y0 && isMethod(p));
+    const tfNow = tfLine ? frac(mLast, (p) => lineOf(p) === tfLine) : null, tfThen = tfLine ? frac(mY0, (p) => lineOf(p) === tfLine) : null;
+    const hasReal = !!T.setting.real;
+    const realNow = hasReal ? frac(mLast, (p) => (p.st || []).includes('real')) : null, realPrev = hasReal ? frac(mPrev, (p) => (p.st || []).includes('real')) : null;
+    const tile = (label, value, sub, go) => `<div class="card sm-tile"${go ? ` data-go="${ga(go)}"` : ''}><div class="sm-l">${esc(label)}</div><div class="sm-v">${value}</div><div class="sm-s">${sub}</div></div>`;
+    const tiles = [
+      tile('Core papers', fmt(core.length), `${fmt(last.length)} in the last 12 months`, scGo),
+      growth == null ? '' : tile('Year-on-year growth', `${growth >= 0 ? '+' : '−'}${Math.abs(Math.round(growth * 100))}%`, `${fmt(last.length)} core papers vs ${fmt(prev.length)} in the 12 months before`),
+      tfLine ? tile(`${lineLab[tfLine] || 'Training-free'} share`, pct(tfNow), `of method papers in the last 12 months · ${pct(tfThen)} in ${y0}`, { sc: ['core'], pd: TAX.paradigms.filter((x) => x.line === tfLine).map((x) => x.code) }) : '',
+      hasReal ? tile('Real-robot experiments', pct(realNow), `of method papers in the last 12 months · ${pct(realPrev)} the year before`, { sc: ['core'], st: ['real'] }) : '',
+      tile('Results tracked', fmt(META.n_results || 0), `from ${fmt(META.n_read || 0)} papers read in full, each number linked to its passage`),
+    ].join('');
+
+    // rising and cooling: share in the last 12 months vs the 12 months before
+    const shift = (codes, field, base1, base0, label) => codes.map((c) => {
+      const has = (p) => (p[field] || []).includes(c);
+      return { c, label: label(c), now: frac(base1, has), then: frac(base0, has), n: base1.filter(has).length };
+    }).filter((r) => r.n >= 5 || r.now >= 0.02);
+    const tasks = shift(TAX.tasks.map((x) => x.code), 'tk', last, prev, (c) => T.task[c]?.label || c);
+    const traits = shift(TAX.traits.map((x) => x.code), 'tr', mLast, mPrev, (c) => c);
+    const settings = shift(TAX.settings.map((x) => x.code), 'st', mLast, mPrev, (c) => T.setting[c]?.label || c);
+    const contribs = shift(TAX.contribs.map((x) => x.code), 'ct', last, prev, (c) => T.contrib[c]?.label || c);
+    const traitDesc = Object.fromEntries(TAX.traits.map((x) => [x.code, x.desc || '']));
+
+    // benchmark activity
+    const bmCount = (list) => { const m = new Map(); for (const p of list) for (const b of p._bm || []) m.set(b, (m.get(b) || 0) + 1); return m; };
+    const bmLast = bmCount(last), bmPrev = bmCount(prev);
+    const topBm = [...bmLast.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const spanY = []; for (let y = by - 6; y <= by; y++) spanY.push(y);
+
+    // insights in plain words
+    const ins = [];
+    if (growth != null) ins.push(`<b>${fmt(last.length)}</b> core papers appeared in the last 12 months, ${growth >= 0 ? `<b>${Math.round(growth * 100)}% more</b>` : `<b>${Math.round(-growth * 100)}% fewer</b>`} than in the 12 months before.`);
+    if (tfLine) ins.push(`${esc(lineLab[tfLine] || 'Training-free')} methods make up <b>${pct(tfNow)}</b> of recent method papers, up from <b>${pct(tfThen)}</b> in ${y0}.`);
+    const bigTask = tasks.slice().sort((a, b) => b.now - a.now)[0];
+    const riseTask = tasks.filter((r) => r.n >= 10).sort((a, b) => (b.now - b.then) - (a.now - a.then))[0];
+    const rising = riseTask && riseTask.now > riseTask.then;
+    if (bigTask && rising && riseTask.c === bigTask.c) ins.push(`<b>${esc(bigTask.label)}</b> is the largest task, with ${pct(bigTask.now)} of recent core papers, and is still gaining ground (${pp(bigTask.now - bigTask.then)}).`);
+    else {
+      if (bigTask) ins.push(`<b>${esc(bigTask.label)}</b> is the largest task, with ${pct(bigTask.now)} of recent core papers.`);
+      if (rising) ins.push(`<b>${esc(riseTask.label)}</b> is gaining the most ground among tasks (${pp(riseTask.now - riseTask.then)} of core papers).`);
+    }
+    const fallTask = tasks.filter((r) => r.n >= 10).sort((a, b) => (a.now - a.then) - (b.now - b.then))[0];
+    if (fallTask && fallTask.now < fallTask.then - 0.01) ins.push(`<b>${esc(fallTask.label)}</b> loses the most ground (${pp(fallTask.now - fallTask.then)}), although it remains ${pct(fallTask.now)} of recent core papers.`);
+    const riseTr = traits.filter((r) => r.n >= 10).sort((a, b) => (b.now - b.then) - (a.now - a.then))[0];
+    if (riseTr && riseTr.now > riseTr.then) ins.push(`Methods using <b>${esc(riseTr.label)}</b> rise fastest: ${pct(riseTr.then)} → <b>${pct(riseTr.now)}</b> of method papers (${esc(traitDesc[riseTr.c] || '')}).`);
+    if (topBm[0]) ins.push(`<b>${esc(topBm[0][0])}</b> is the most used benchmark this year, in ${fmt(topBm[0][1])} core papers.`);
+    if (hasReal) ins.push(`<b>${pct(realNow)}</b> of recent method papers include real-robot experiments (${pct(realPrev)} the year before).`);
+    const coNow = frac(last, (p) => (p.co || []).length);
+    if (coNow) ins.push(`Industry co-authors appear on <b>${pct(coNow)}</b> of recent core papers.`);
+
+    // A. monthly momentum (bars) with a 6-month average (line), one axis
+    const months = [];
+    { const d1 = new Date(ref), start = new Date(Date.UTC(Math.max(by - 6, 2015), 0, 1));
+      for (let d = start; d <= d1; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`); }
+    const perM = new Map(months.map((m) => [m, 0]));
+    for (const p of core) { const m = (p.d || '').slice(0, 7); if (perM.has(m)) perM.set(m, perM.get(m) + 1); }
+    const mv = months.map((m) => perM.get(m));
+    const avg = mv.map((_, i) => { const s = mv.slice(Math.max(0, i - 5), i + 1); return s.reduce((a, b) => a + b, 0) / s.length; });
+    const momentum = (() => {
+      const W = 640, H = 250, ml = 34, mr = 8, mt = 10, mb = 24, iw = W - ml - mr, ih = H - mt - mb;
+      const ymax = niceMax(Math.max(1, ...mv)), bw = iw / months.length, yS = (v) => mt + ih - (v / ymax) * ih;
+      let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Core papers per month">`;
+      for (const t of niceTicks(ymax)) s += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${yS(t)}" y2="${yS(t)}"/><text x="${ml - 8}" y="${yS(t) + 4}" text-anchor="end">${fmt(t)}</text>`;
+      months.forEach((m, i) => {
+        const x = ml + i * bw, h = yS(0) - yS(mv[i]);
+        if (mv[i]) s += `<rect class="sm-bar" x="${x + 1}" y="${yS(mv[i])}" width="${Math.max(1, bw - 2)}" height="${h}" rx="${Math.min(2, (bw - 2) / 2)}"/>`;
+        if (m.endsWith('-01')) s += `<text x="${x}" y="${H - 8}">${m.slice(0, 4)}</text>`;
+      });
+      s += `<path class="sm-line" d="${avg.map((v, i) => `${i ? 'L' : 'M'}${(ml + i * bw + bw / 2).toFixed(1)},${yS(v).toFixed(1)}`).join('')}"/>`;
+      months.forEach((m, i) => { const yr = m.slice(0, 4); s += `<rect class="hit" x="${ml + i * bw}" y="${mt}" width="${bw}" height="${ih}" data-tip="${esc(`<div class="tt-h">${m}${i === months.length - 1 ? ' (to date)' : ''}</div><div class="tt-r">Core papers<b>${mv[i]}</b></div><div class="tt-r">6-month average<b>${avg[i].toFixed(1)}</b></div>`)}" data-go="${ga({ sc: ['core'], yr: [yr] })}"/>`; });
+      return s + `<line class="axis" x1="${ml}" x2="${W - mr}" y1="${yS(0)}" y2="${yS(0)}"/></svg>`;
+    })();
+
+    // B. paradigm share of method papers per year (100% stacked area, direct labels at the right edge)
+    const pds = PD_ORDER.filter((x) => x !== 'none');
+    let yrs = []; for (let y = META.timeline_start || 2017; y <= by; y++) yrs.push(y);
+    const perY = yrs.map((y) => { const ps = core.filter((p) => p.y === y && isMethod(p)); return { y, n: ps.length, by: Object.fromEntries(pds.map((pd) => [pd, ps.filter((p) => p.pd === pd).length])) }; });
+    const firstOk = perY.findIndex((d) => d.n >= 20);
+    const PY = perY.slice(Math.max(0, firstOk));
+    yrs = PY.map((d) => d.y);
+    const shareChart = (() => {
+      const W = 640, H = 250, ml = 36, mr = 186, mt = 8, mb = 24, iw = W - ml - mr, ih = H - mt - mb;
+      const xS = (i) => ml + (yrs.length > 1 ? (i / (yrs.length - 1)) * iw : iw / 2), yS = (v) => mt + ih - v * ih;
+      let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Paradigm share of method papers by year">`;
+      for (const t of [0, .25, .5, .75, 1]) s += `<line class="grid" x1="${ml}" x2="${ml + iw}" y1="${yS(t)}" y2="${yS(t)}"/><text x="${ml - 8}" y="${yS(t) + 4}" text-anchor="end">${t * 100}%</text>`;
+      const lo = PY.map(() => 0);
+      const labels = [];
+      for (const pd of pds) {
+        const hi = PY.map((d, i) => lo[i] + (d.n ? d.by[pd] / d.n : 0));
+        const top = hi.map((v, i) => `${xS(i).toFixed(1)},${yS(v).toFixed(1)}`), bot = lo.map((v, i) => `${xS(i).toFixed(1)},${yS(v).toFixed(1)}`).reverse();
+        s += `<path class="sm-area" d="M${top.join('L')}L${bot.join('L')}Z" fill="${pdVar(pd)}"/>`;
+        const k = PY.length - 1, sh = hi[k] - lo[k];
+        if (sh >= 0.04) labels.push({ pd, y: yS((hi[k] + lo[k]) / 2), sh });
+        for (let i = 0; i < lo.length; i++) lo[i] = hi[i];
+      }
+      for (let i = 1; i < labels.length; i++) if (labels[i - 1].y - labels[i].y < 14) labels[i].y = labels[i - 1].y - 14;  // keep labels apart
+      for (const l of labels) s += `<line class="axis" x1="${ml + iw + 3}" x2="${ml + iw + 12}" y1="${l.y}" y2="${l.y}"/><text class="sm-dl" x="${ml + iw + 16}" y="${l.y + 4}">${esc(T.pd[l.pd]?.label || l.pd)} ${pct(l.sh)}</text>`;
+      PY.forEach((d, i) => {
+        const x0 = i ? (xS(i - 1) + xS(i)) / 2 : ml, x1 = i < PY.length - 1 ? (xS(i) + xS(i + 1)) / 2 : ml + iw;
+        const rows = pds.slice().reverse().map((pd) => `<div class="tt-r"><span class="dot" style="--c:${pdVar(pd)}"></span>${esc(T.pd[pd]?.label)}<b>${d.n ? pct(d.by[pd] / d.n) : '–'}</b></div>`).join('');
+        s += `<rect class="hit" x="${x0}" y="${mt}" width="${x1 - x0}" height="${ih}" data-tip="${esc(`<div class="tt-h">${d.y}${d.y === by ? ' (to date)' : ''} · ${fmt(d.n)} method papers</div>${rows}`)}" data-go="${ga({ sc: ['core'], yr: [String(d.y)] })}"/>`;
+        s += `<text x="${xS(i)}" y="${H - 8}" text-anchor="middle">${d.y}${d.y === by ? '*' : ''}</text>`;
+      });
+      return s + '</svg>';
+    })();
+    const shareTable = `<details class="sm-data"><summary>Show the numbers</summary><div class="tbl-wrap"><table><thead><tr><th>Year</th><th>Method papers</th>${pds.map((pd) => `<th>${esc(T.pd[pd]?.label)}</th>`).join('')}</tr></thead><tbody>${PY.map((d) => `<tr><td>${d.y}${d.y === by ? '*' : ''}</td><td>${fmt(d.n)}</td>${pds.map((pd) => `<td>${d.n ? pct(d.by[pd] / d.n) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
+
+    // C. dumbbells: last 12 months (filled) vs the 12 months before (hollow)
+    const dumbbell = (rows, key, base, max = 12) => {
+      rows = rows.slice().sort((a, b) => b.now - a.now).slice(0, max);
+      if (!rows.length) return '<p class="muted">Not enough papers yet.</p>';
+      const W = 420, rh = 24, ml = 132, mr = 52, H = rows.length * rh + 22, iw = W - ml - mr;
+      const vmax = Math.max(0.05, ...rows.map((r) => Math.max(r.now, r.then)));
+      const step = vmax > 0.4 ? 0.2 : vmax > 0.2 ? 0.1 : 0.05, top = Math.ceil(vmax / step) * step, xS = (v) => ml + (v / top) * iw;
+      let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">`;
+      for (let t = 0; t <= top + 1e-9; t += step) s += `<line class="grid" x1="${xS(t)}" x2="${xS(t)}" y1="0" y2="${H - 18}"/><text x="${xS(t)}" y="${H - 4}" text-anchor="middle">${Math.round(t * 100)}%</text>`;
+      rows.forEach((r, i) => {
+        const y = i * rh + rh / 2, d = r.now - r.then;
+        s += `<text class="sm-lab" x="${ml - 10}" y="${y + 4}" text-anchor="end">${esc(r.label.length > 22 ? r.label.slice(0, 21) + '…' : r.label)}</text>`;
+        s += `<line class="sm-conn" x1="${xS(r.then)}" x2="${xS(r.now)}" y1="${y}" y2="${y}"/>`;
+        s += `<circle class="sm-then" cx="${xS(r.then)}" cy="${y}" r="4.5"/><circle class="sm-now" cx="${xS(r.now)}" cy="${y}" r="5"/>`;
+        s += `<text class="sm-delta" x="${W - 4}" y="${y + 4}" text-anchor="end">${Math.abs(d) < 0.0005 ? '±0' : `${d > 0 ? '▲' : '▼'} ${Math.abs(d * 100).toFixed(1)}`}</text>`;
+        s += `<rect class="hit" x="0" y="${i * rh}" width="${W}" height="${rh}" data-tip="${esc(`<div class="tt-h">${esc(r.label)}</div>${key === 'tr' && traitDesc[r.c] ? `<div class="muted" style="max-width:260px;margin-bottom:4px">${esc(traitDesc[r.c])}</div>` : ''}<div class="tt-r">Last 12 months<b>${pct(r.now)} · ${fmt(r.n)} papers</b></div><div class="tt-r">12 months before<b>${pct(r.then)}</b></div><div class="tt-r">Change<b>${pp(d)}</b></div>`)}" data-go="${ga({ sc: ['core'], [key]: [r.c] })}"/>`;
+      });
+      return s + '</svg>';
+    };
+    const dbLegend = `<div class="legend sm-db-legend"><span><i class="sm-k sm-k-now"></i>Last 12 months</span><span><i class="sm-k sm-k-then"></i>12 months before</span><span class="muted">▲▼ change in percentage points</span></div>`;
+
+    // D. trending papers per year: citations per month since first posting
+    const ageM = (p) => Math.max(1, (ref - (ts(p) || ref)) / (30.44 * DAY));
+    const trend = [by, by - 1, by - 2, by - 3].map((y) => {
+      const ps = core.filter((p) => p.y === y).map((p) => ({ p, v: (p.c || 0) / ageM(p) })).filter((x) => x.p.c > 0).sort((a, b) => b.v - a.v).slice(0, 6);
+      if (!ps.length) return '';
+      return `<div class="card lm-year"><h4>${y}${y === by ? ' <em class="muted" style="font:500 12px var(--font)">to date</em>' : ''}<span>${fmt(core.filter((p) => p.y === y).length)} core papers</span></h4>
+        ${ps.map(({ p, v }) => `<div class="lm-item" data-open="${esc(p.id)}"><span class="dot" style="--c:${pdVar(p.pd)}"></span><span class="t" title="${esc(p.t)}">${p.n ? `<b>${esc(p.n)}</b> — ` : ''}${esc(p.t)}</span><span class="c" title="${fmt(p.c)} citations">${v >= 10 ? Math.round(v) : v.toFixed(1)}/mo</span></div>`).join('')}</div>`;
+    }).join('');
+
+    // E. benchmarks: papers in the last 12 months, change, and papers per year
+    const bmRows = topBm.map(([b, n]) => {
+      const per = spanY.map((y) => core.filter((p) => p.y === y && (p._bm || []).includes(b)).length), m = Math.max(1, ...per);
+      const spark = `<svg viewBox="0 0 ${spanY.length * 12} 24" class="sm-spark">${per.map((v, i) => `<rect x="${i * 12 + 1}" y="${24 - (v / m) * 22}" width="10" height="${Math.max(v ? 1.5 : 0, (v / m) * 22)}" rx="1.5"/>`).join('')}</svg>`;
+      const p0 = bmPrev.get(b) || 0, ch = p0 ? Math.round((n / p0 - 1) * 100) : null;
+      return `<tr data-go="${ga({ sc: ['core'], bm: [b] })}" data-tip="${esc(`<div class="tt-h">${esc(b)}</div>${spanY.map((y, i) => `<div class="tt-r">${y}${y === by ? '*' : ''}<b>${per[i]}</b></div>`).join('')}`)}"><td class="sm-bmn">${esc(b)}</td><td class="num">${fmt(n)}</td><td class="num muted">${ch == null ? 'new' : `${ch >= 0 ? '+' : '−'}${Math.abs(ch)}%`}</td><td>${spark}</td></tr>`;
+    }).join('');
+
+    // F. who publishes: industry share per year, top companies, top venues (last 24 months)
+    const recent2 = win(core, 0, 730);
+    const coY = yrs.map((y) => { const ps = core.filter((p) => p.y === y); return { y, n: ps.length, s: frac(ps, (p) => (p.co || []).length) }; });
+    const coChart = (() => {
+      const W = 300, H = 156, ml = 32, mr = 10, mt = 8, mb = 28, iw = W - ml - mr, ih = H - mt - mb;
+      const top = Math.max(0.1, Math.ceil(Math.max(...coY.map((d) => d.s)) * 10) / 10), xS = (i) => ml + (coY.length > 1 ? i / (coY.length - 1) : 0.5) * iw, yS = (v) => mt + ih - (v / top) * ih;
+      let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Share of core papers with industry co-authors">`;
+      for (let t = 0; t <= top + 1e-9; t += top / 2) s += `<line class="grid" x1="${ml}" x2="${W - mr}" y1="${yS(t)}" y2="${yS(t)}"/><text x="${ml - 6}" y="${yS(t) + 4}" text-anchor="end">${Math.round(t * 100)}%</text>`;
+      s += `<path class="sm-line" d="${coY.map((d, i) => `${i ? 'L' : 'M'}${xS(i).toFixed(1)},${yS(d.s).toFixed(1)}`).join('')}"/>`;
+      coY.forEach((d, i) => { s += `<circle class="sm-pt" cx="${xS(i)}" cy="${yS(d.s)}" r="4"/><rect class="hit" x="${xS(i) - iw / coY.length / 2}" y="${mt}" width="${iw / coY.length}" height="${ih}" data-tip="${esc(`<div class="tt-h">${d.y}</div><div class="tt-r">With industry co-authors<b>${pct(d.s)} of ${fmt(d.n)}</b></div>`)}"/>`; if (i === 0 || i === coY.length - 1 || i % 3 === 0) s += `<text x="${xS(i)}" y="${H - 6}" text-anchor="middle">${d.y}</text>`; });
+      return s + '</svg>';
+    })();
+    const barList = (entries, key, total) => {
+      const m = Math.max(1, ...entries.map((e) => e[1]));
+      return entries.map(([k, n]) => `<div class="sm-bl" data-go="${ga({ sc: ['core'], [key]: [k] })}" data-tip="${esc(`<div class="tt-h">${esc(k)}</div><div class="tt-r">Core papers, last 24 months<b>${fmt(n)}${total ? ` · ${pct(n / total)}` : ''}</b></div>`)}"><span class="k">${esc(k)}</span><span class="b"><i style="width:${(n / m) * 100}%"></i></span><span class="n">${fmt(n)}</span></div>`).join('');
+    };
+    const coCount = new Map(); for (const p of recent2) for (const c of p.co || []) coCount.set(c, (coCount.get(c) || 0) + 1);
+    const vnCount = new Map(); for (const p of recent2) if (p.vn) vnCount.set(p.vn, (vnCount.get(p.vn) || 0) + 1);
+    const pubShare = frac(recent2, (p) => !!p.vn);
+
+    $('#app').innerHTML = `
+      <div class="page-head"><div><h1>Summary</h1><p>${esc(META.field || META.title || '')} at a glance: how fast the field grows, which methods and tasks are rising, and what people evaluate on. Updated with every build (last ${esc(STATS.built_at.slice(0, 10))}). Click any chart to open the papers behind it.</p></div></div>
+      <div class="sm-tiles">${tiles}</div>
+      <div class="card sm-ins"><h3>Key trends</h3><ul>${ins.map((x) => `<li>${x}</li>`).join('')}</ul></div>
+      <div class="sm-grid2">
+        <div class="card chart-card"><div class="chart-head"><h3>Momentum</h3><span class="legend" style="margin:0"><span><i class="sw" style="--c:color-mix(in srgb, var(--accent) 38%, transparent)"></i>Core papers per month</span><span><i class="sm-k sm-k-line"></i>6-month average</span></span></div>${momentum}</div>
+        <div class="card chart-card"><div class="chart-head"><h3>Paradigm shift</h3><span class="muted" style="font-size:12px">Share of core method papers · * ${by} to date</span></div>${shareChart}${shareTable}</div>
+      </div>
+      <div class="section"><h2>Rising and cooling</h2><p class="sub">Share of papers in the last 12 months against the 12 months before. Tasks use all core papers; techniques and settings use method papers.</p>${dbLegend}
+        <div class="sm-grid3">
+          <div class="card chart-card"><div class="chart-head"><h3>Tasks</h3></div>${dumbbell(tasks, 'tk')}</div>
+          <div class="card chart-card"><div class="chart-head"><h3>Techniques</h3></div>${dumbbell(traits, 'tr')}</div>
+          <div class="card chart-card"><div class="chart-head"><h3>Settings and contributions</h3></div><h4 class="sm-subh">Where methods are evaluated</h4>${dumbbell(settings, 'st')}<h4 class="sm-subh">What papers contribute</h4>${dumbbell(contribs, 'ct')}</div>
+        </div></div>
+      <div class="section"><h2>Trending papers</h2><p class="sub">Each year's core papers ranked by citations per month since first posting, so recent work is not penalized for being new (Semantic Scholar / OpenAlex counts).</p><div class="landmarks">${trend}</div></div>
+      <div class="sm-grid2">
+        <div class="card chart-card"><div class="chart-head"><h3>Most used benchmarks</h3><span class="muted" style="font-size:12px">core papers, last 12 months</span></div>
+          <table class="sm-bm"><thead><tr><th>Benchmark</th><th class="num">Papers</th><th class="num">vs year before</th><th>${spanY[0]}–${by}</th></tr></thead><tbody>${bmRows}</tbody></table></div>
+        <div class="card chart-card"><div class="chart-head"><h3>Who publishes</h3><span class="muted" style="font-size:12px">${pct(pubShare)} of core papers from the last 24 months already have a venue</span></div>
+          <div class="sm-who"><div><h4>Industry co-authors, share by year</h4><p class="sm-note">Companies detected in author blocks and e-mails.</p>${coChart}</div><div><h4>Companies, last 24 months</h4>${barList([...coCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8), 'co', recent2.length)}</div><div><h4>Venues, last 24 months</h4>${barList([...vnCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8), 'vn', recent2.length)}</div></div></div>
+      </div>`;
+    $('#app').onclick = (e) => {
+      const g = e.target.closest('[data-go]'); if (g) { hideTip(); return goLibrary(JSON.parse(g.dataset.go)); }
+      const o = e.target.closest('[data-open]'); if (o) return openDrawer(o.dataset.open);
+    };
+  }
+
   // ───────── benchmarks ─────────
   async function renderBenchmarks() {
     const list = P.filter((p) => p.sc === 'core' || p.sc === 'adjacent');
@@ -1254,7 +1473,7 @@
       <div class="g-table lb-table"><table class="qtable"><thead><tr><th>#</th><th>Method</th><th>Paradigm</th><th>Backbone</th><th>Set</th>${metrics.map((m) => `<th class="num sortable${m === key ? ' on' : ''}" data-sort="${esc(m)}">${esc(m)}${m === key ? (dir < 0 ? ' ↓' : ' ↑') : ''}</th>`).join('')}<th></th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-open="${esc(r.id)}">
         <td class="num">${i + 1}</td>
-        <td><b>${esc(r.n || r.t.slice(0, 40))}</b>${r.method && r.method !== r.n ? `<br><span class="muted">${esc(r.method.slice(0, 60))}</span>` : ''}<br><span class="muted">${esc(r.y)} · ${esc(r.v || 'arXiv')}</span>${coBadge(r)}</td>
+        <td><b>${esc(r.n || r.t.slice(0, 40))}</b>${cleanMethod(r.method) && cleanMethod(r.method) !== r.n ? `<br><span class="muted">${esc(cleanMethod(r.method).slice(0, 60))}</span>` : ''}<br><span class="muted">${esc(r.y)} · ${esc(r.v || 'arXiv')}</span>${coBadge(r)}</td>
         <td><span class="dot" style="--c:${pdVar(r.pd)}"></span> ${esc(T.pd[r.pd]?.label || r.pd)}${r.zs ? '<br><span class="muted">zero-shot</span>' : ''}</td>
         <td>${esc((r.backbone || '').slice(0, 48))}${r.open === true ? ' <span class="ok-tag">open</span>' : r.open === false ? ' <span class="chip">closed</span>' : ''}</td>
         <td>${r.eval_set === 'subset' ? `<b class="subset" title="${esc(r.eval_note)}">subset</b>` : 'full'}</td>
